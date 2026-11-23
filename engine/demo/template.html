@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic SDLC for Salesforce – POC Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0F1B2D; --navy2:#16263D; --navy3:#1E3150; --line:#2A3D5A;
+  --paper:#F4F1EA; --muted:#A9B4C4; --orange:#F2864F; --green:#4CC38A; --red:#F0616D; --yellow:#E8C35A; --blue:#6AA7FF;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--navy);color:var(--paper);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.5}
+h1,h2,h3{font-family:"Space Grotesk",Inter,sans-serif;margin:0;letter-spacing:-.01em}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.wrap{max-width:1440px;margin:0 auto;padding:28px 28px 48px}
+header{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+.kicker{color:var(--orange);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+header h1{font-size:30px;line-height:1.15}
+header p{color:var(--muted);margin:6px 0 0;max-width:760px}
+.badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--muted);background:var(--navy2)}
+.badge b{color:var(--paper);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;flex:none}
+
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--navy2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--navy3);color:var(--paper);padding:8px 14px;font-weight:600}
+button:hover{border-color:var(--orange)}
+button.primary{background:var(--orange);border-color:var(--orange);color:var(--navy)}
+button:disabled{opacity:.4;cursor:default}
+select{font:inherit;background:var(--navy3);color:var(--paper);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.progress{flex:1;min-width:160px;height:6px;background:var(--navy3);border-radius:6px;overflow:hidden}
+.progress>div{height:100%;width:0;background:var(--orange);transition:width .4s}
+.counter{color:var(--muted);font-size:13px;min-width:90px;text-align:right}
+
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.kpi{background:var(--navy2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi .v{font-family:"Space Grotesk",Inter,sans-serif;font-size:26px;font-weight:700;line-height:1.1}
+.kpi .l{color:var(--muted);font-size:12px}
+.kpi.status .v{font-size:20px}
+
+.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}.grid>*{min-width:0}
+.panel{background:var(--navy2);border:1px solid var(--line);border-radius:14px}
+.panel-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panel-h h2{font-size:15px}
+.panel-b{padding:16px}
+
+.pipe{list-style:none;margin:0;padding:10px}
+.node{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;position:relative;border:1px solid transparent}
+.node:hover{background:var(--navy3)}
+.node.sel{border-color:var(--orange);background:var(--navy3)}
+.node .ic{width:34px;height:34px;border-radius:9px;background:var(--navy3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:"Space Grotesk",Inter,sans-serif;font-weight:700;font-size:13px;color:var(--muted);flex:none;transition:all .3s}
+.node .nm{font-weight:600;font-size:14px}
+.node .rl{color:var(--muted);font-size:12px;line-height:1.3}
+.node .st{margin-left:auto;font-size:11px;color:var(--muted)}
+.node.active .ic{background:var(--orange);color:var(--navy);border-color:var(--orange);box-shadow:0 0 0 4px rgba(242,134,79,.2)}
+.node.done .ic{background:#183A31;border-color:var(--green);color:var(--green)}
+.node.skip .ic{background:#332C17;border-color:var(--yellow);color:var(--yellow)}
+.node.fail .ic{background:#3D1E26;border-color:var(--red);color:var(--red)}
+.node.para::before{content:"";position:absolute;left:-2px;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--blue);opacity:.7}
+.legend{padding:0 16px 14px;color:var(--muted);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+
+.detail-title{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.detail-title h3{font-size:22px}
+.pill{font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;border:1px solid var(--line);color:var(--muted)}
+.pill.ok{color:var(--green);border-color:var(--green);background:#13302A}
+.pill.bad{color:var(--red);border-color:var(--red);background:#331A21}
+.pill.warn{color:var(--yellow);border-color:var(--yellow);background:#332C17}
+.pill.info{color:var(--blue);border-color:var(--blue);background:#172943}
+.summary{font-size:16px;color:#DCE3EC;margin:12px 0 16px;max-width:980px}
+.meta{color:var(--muted);font-size:12px;margin-top:4px}
+.sec{margin-top:18px}
+.sec h4{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.finding{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--navy)}
+.finding .pill{flex:none;margin-top:1px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:-1px;position:relative;z-index:1}
+.tab{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;padding:7px 12px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:var(--navy);color:var(--muted);font-weight:400}
+.tab.on{background:#0B1422;color:var(--paper);border-color:var(--orange)}
+.code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;background:#0B1422;border:1px solid var(--line);border-radius:0 10px 10px 10px;max-height:460px;overflow:auto;font-size:12.5px;line-height:1.55}
+.code table{border-collapse:collapse;width:100%}
+.code td{padding:0 12px;white-space:pre;vertical-align:top}
+.code tr.gap td{color:#4D6080;background:#101C2E;font-style:italic;padding:2px 12px}
+.vt{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}.vt th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:6px 10px;border-bottom:1px solid var(--line)}.vt td{padding:8px 10px;border-bottom:1px solid #22344F;vertical-align:top}
+.code td.n{color:#4D6080;text-align:right;user-select:none;width:1%;padding-right:10px;border-right:1px solid var(--line)}
+.code tr.add td{background:rgba(76,195,138,.13)} .code tr.add td.n{color:var(--green)}
+.code tr.del td{background:rgba(240,97,109,.13);text-decoration:line-through;text-decoration-color:rgba(240,97,109,.5)} .code tr.del td.n{color:var(--red)}
+.k{color:#C792EA}.s{color:#C3E88D}.c{color:#6A7E9C;font-style:italic}.fn{color:#82AAFF}
+pre.out{background:#0B1422;border:1px solid var(--line);border-radius:10px;padding:14px;max-height:380px;overflow:auto;font-size:12.5px;white-space:pre-wrap;margin:0}
+pre.out .f{color:var(--red)} pre.out .p{color:var(--green)}
+.callout{border-left:3px solid var(--orange);background:var(--navy);padding:12px 14px;border-radius:0 10px 10px 0;color:#DCE3EC}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.flow .box{border:1px solid var(--line);background:var(--navy);border-radius:8px;padding:6px 10px;font-size:13px}
+.flow .arr{color:var(--orange)}
+.story{white-space:pre-wrap;background:var(--navy);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14px;color:#DCE3EC;margin:0}
+.md{background:var(--paper);color:#14202E;border-radius:10px;padding:18px 22px;max-height:460px;overflow:auto;font-size:14px}
+.md h1{font-size:20px;margin:0 0 10px}.md h2{font-size:16px;margin:16px 0 6px}.md table{border-collapse:collapse;width:100%;margin:8px 0}
+.md th,.md td{border:1px solid #CFC8B8;padding:5px 8px;text-align:left;vertical-align:top}.md th{background:#E7E2D6}
+.md pre{background:#E7E2D6;padding:10px;border-radius:6px;overflow:auto;font-size:12px}.md code{font-size:12.5px}
+.md ul,.md ol{padding-left:22px;margin:6px 0}
+
+.log{margin-top:16px}
+.log table{width:100%;border-collapse:collapse;font-size:13px}
+.log th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid var(--line)}
+.log td{padding:8px 12px;border-bottom:1px solid #22344F;vertical-align:top}
+.log tr{cursor:pointer}.log tr:hover td{background:var(--navy3)}
+.log tr.cur td{background:#24314A}
+.log tr.future{display:none}
+.foot{color:var(--muted);font-size:12px;margin-top:18px;line-height:1.6}
+.empty{color:var(--muted);text-align:center;padding:60px 20px}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}}
+.anim{animation:pop .35s ease-out both}
+@media (max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="kicker">Multi-agent orchestration for Salesforce · POC demo</div>
+      <h1>From business request to a deployable Salesforce change, run by an AI delivery team</h1>
+      <p>One orchestrator coordinates seven Salesforce specialist agents (BA, architect, Apex developer, Apex tester, reviewer, security and DevOps) through governor-limit, security and org-validation gates, with a human approval before anything is deployed.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="badge"><span class="dot" style="background:var(--orange)"></span>Run <b id="runId"></b></span>
+      <span class="badge" id="modeBadge"></span>
+    </div>
+  </header>
+
+  <div class="controls">
+    <button class="primary" id="playBtn">▶ Play run</button>
+    <button id="stepBtn">Step →</button>
+    <button id="allBtn">Show all</button>
+    <button id="resetBtn">↺ Reset</button>
+    <select id="speed" aria-label="Playback speed"><option value="2600">Presenter pace</option><option value="1400" selected>Normal</option><option value="600">Fast</option></select>
+    <div class="progress"><div id="prog"></div></div>
+    <div class="counter" id="counter"></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="kAgents">0</div><div class="l">Agent tasks completed</div></div>
+    <div class="kpi"><div class="v" id="kFiles">0</div><div class="l">Files produced</div></div>
+    <div class="kpi"><div class="v" id="kTests">–</div><div class="l">Static analysis (PMD Apex)</div></div>
+    <div class="kpi"><div class="v" id="kLoops">0</div><div class="l">Auto-fix iterations</div></div>
+    <div class="kpi"><div class="v" id="kFind">0</div><div class="l">Review &amp; security findings</div></div>
+    <div class="kpi status"><div class="v" id="kStatus">Not started</div><div class="l">Run status</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-h"><h2>Orchestrated pipeline</h2></div>
+      <ul class="pipe" id="pipe"></ul>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--orange)"></span>Working</span>
+        <span><span class="dot" style="background:var(--green)"></span>Done</span>
+        <span><span class="dot" style="background:var(--red)"></span>Failed → rerouted</span>
+        <span><span class="dot" style="background:var(--yellow)"></span>Skipped (no org)</span>
+        <span><span class="dot" style="background:var(--blue)"></span>Runs in parallel</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2 id="detailHead">Business request</h2><span class="meta" id="detailMeta"></span></div>
+      <div class="panel-b" id="detail"></div>
+    </div>
+  </div>
+
+  <div class="panel log">
+    <div class="panel-h"><h2>Audit trail</h2><span class="meta">Every agent action, tool run and human decision is logged (trace.json)</span></div>
+    <div style="overflow:auto"><table><thead><tr><th>#</th><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Outcome</th></tr></thead><tbody id="logBody"></tbody></table></div>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script id="trace" type="application/json">/*__TRACE__*/</script>
+<script>
+const T = JSON.parse(document.getElementById('trace').textContent);
+const EV = T.events;
+const NODES = [
+  {id:'requirements', ic:'BA', nm:'Salesforce BA Agent', rl:'Story, ACs, objects & access'},
+  {id:'architect', ic:'AR', nm:'Solution Architect Agent', rl:'Clicks vs code, data model'},
+  {id:'developer', ic:'DV', nm:'Apex Developer Agent', rl:'Apex, trigger & metadata', para:true},
+  {id:'tester', ic:'TS', nm:'Apex Test Agent', rl:'Test class from ACs', para:true},
+  {id:'static_analysis', ic:'SA', nm:'Static analysis', rl:'Metadata checks + PMD Apex'},
+  {id:'org_validation', ic:'OV', nm:'Org validation', rl:'Deploy validate + Apex tests'},
+  {id:'reviewer', ic:'CR', nm:'Code Review Agent', rl:'Salesforce best practices', para:true},
+  {id:'security', ic:'SC', nm:'Security Agent', rl:'CRUD/FLS, sharing, injection', para:true},
+  {id:'human_gate', ic:'HU', nm:'Human approval', rl:'Delivery lead signs off'},
+  {id:'release', ic:'RL', nm:'Salesforce DevOps Agent', rl:'Manifest, CI/CD, release notes'},
+];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nodeOf = e => e.kind==='agent' ? e.agent : e.kind==='tool' ? e.tool : e.kind==='human_gate' ? 'human_gate' : e.kind==='route' ? (e.to||'developer') : null;
+
+let pos = 0;            // number of events revealed
+let selected = 0;       // index into EV (or -1 for story)
+let timer = null;
+
+// ---------- file history (for diffs) ----------
+function fileBefore(idx, path){
+  for(let i=idx-1;i>=0;i--){const e=EV[i]; if(e.file_contents && path in e.file_contents) return e.file_contents[path];}
+  return null;
+}
+
+// ---------- rendering helpers ----------
+const KW = /\b(public|private|protected|global|static|final|class|trigger|on|void|for|if|else|return|new|insert|update|delete|upsert|with|without|sharing|as|user|null|true|false|try|catch|throw|this|private|override|virtual|abstract|SELECT|FROM|WHERE|AND|OR|IN|LIMIT|WITH|USER_MODE|continue|break|Boolean|Integer|Decimal|String|Id|List|Map|Set|Date)\b/g;
+function hl(line, path){
+  if(!/\.(cls|trigger)$/.test(path)) return esc(line);
+  if(/^\s*(\/\*\*|\*|\/\/)/.test(line)) return `<span class="c">${esc(line)}</span>`;
+  const out=[]; let rest=line; const re=/(\/\/.*$)|('(?:[^'\\]|\\.)*')|(@\w+)/; let m;
+  while((m=re.exec(rest))){
+    out.push(esc(rest.slice(0,m.index)).replace(KW,'<span class="k">$1</span>'));
+    out.push(m[1]?`<span class="c">${esc(m[1])}</span>`:m[2]?`<span class="s">${esc(m[2])}</span>`:`<span class="fn">${esc(m[3])}</span>`);
+    rest=rest.slice(m.index+m[0].length);
+  }
+  out.push(esc(rest).replace(KW,'<span class="k">$1</span>'));
+  return out.join('');
+}
+function diffLines(a,b){ // LCS line diff
+  const A=a.split('\n'),B=b.split('\n'),n=A.length,m=B.length;
+  const L=Array.from({length:n+1},()=>new Int32Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=A[i]===B[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const r=[];let i=0,j=0;
+  while(i<n&&j<m){if(A[i]===B[j]){r.push([' ',B[j],j+1]);i++;j++}else if(L[i+1][j]>=L[i][j+1]){r.push(['-',A[i],'']);i++}else{r.push(['+',B[j],j+1]);j++}}
+  while(i<n)r.push(['-',A[i++],'']);while(j<m){r.push(['+',B[j],j+1]);j++}
+  return r;
+}
+function codeView(path, content, prev){
+  let rows;
+  if(prev!=null && prev!==content){
+    const d=diffLines(prev.replace(/\n$/,''),content.replace(/\n$/,'')), keep=d.map(()=>false);
+    d.forEach(([t],i)=>{if(t!==' ')for(let k=Math.max(0,i-4);k<=Math.min(d.length-1,i+4);k++)keep[k]=true});
+    rows=[];let skipped=0;
+    d.forEach(([t,l,n],i)=>{
+      if(!keep[i]){skipped++;return}
+      if(skipped){rows.push(`<tr class="gap"><td class="n">⋯</td><td>${skipped} unchanged lines</td></tr>`);skipped=0}
+      rows.push(`<tr class="${t==='+'?'add':t==='-'?'del':''}"><td class="n">${t==='-'?'−':n}</td><td>${hl(l,path)}</td></tr>`);
+    });
+    if(skipped) rows.push(`<tr class="gap"><td class="n">⋯</td><td>${skipped} unchanged lines</td></tr>`);
+  } else {
+    rows=content.replace(/\n$/,'').split('\n').map((l,i)=>`<tr><td class="n">${i+1}</td><td>${hl(l,path)}</td></tr>`);
+  }
+  return `<div class="code"><table>${rows.join('')}</table></div>`;
+}
+function md(src){ // tiny markdown renderer for agent docs
+  const lines=src.split('\n');let h='',inCode=false,inList=false,tbl=[];
+  const inline=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const flushT=()=>{if(!tbl.length)return;const rows=tbl.filter(r=>!/^\|\s*-/.test(r)).map(r=>r.replace(/^\||\|$/g,'').split('|'));
+    h+='<table>'+rows.map((r,i)=>'<tr>'+r.map(c=>i?`<td>${inline(c.trim())}</td>`:`<th>${inline(c.trim())}</th>`).join('')+'</tr>').join('')+'</table>';tbl=[]};
+  const flushL=()=>{if(inList){h+='</ul>';inList=false}};
+  for(const l of lines){
+    if(l.startsWith('```')){flushT();flushL();h+=inCode?'</pre>':'<pre>';inCode=!inCode;continue}
+    if(inCode){h+=esc(l)+'\n';continue}
+    if(l.startsWith('|')){flushL();tbl.push(l);continue} else flushT();
+    if(/^#{1,3} /.test(l)){flushL();const n=l.match(/^#+/)[0].length;h+=`<h${n}>${inline(l.slice(n+1))}</h${n}>`;continue}
+    if(/^(\d+\.|-) /.test(l)){if(!inList){h+='<ul>';inList=true}h+=`<li>${inline(l.replace(/^(\d+\.|-) /,''))}</li>`;continue}
+    flushL(); if(l.trim()) h+=`<p style="margin:4px 0">${inline(l)}</p>`;
+  }
+  flushT();flushL();return h;
+}
+function pytestOut(s){
+  return esc(s).split('\n').map(l=>/FAILED|Error|failed|\.(cls|trigger):\d+/.test(l)?`<span class="f">${l}</span>`:/passed/.test(l)&&!/failed/.test(l)?`<span class="p">${l}</span>`:l).join('\n');
+}
+const sevPill = s => `<span class="pill ${s==='high'?'bad':s==='medium'?'warn':'info'}">${esc(s)}</span>`;
+const verdictPill = v => v ? `<span class="pill ${/APPROVE|PASS/.test(v)?'ok':'bad'}">${esc(v.replace('_',' '))}</span>` : '';
+const time = t => (t||'').slice(11,19);
+
+// ---------- detail panel ----------
+let fileTab = {};
+function renderDetail(){
+  const D=document.getElementById('detail'), H=document.getElementById('detailHead'), M=document.getElementById('detailMeta');
+  if(selected<0 || pos===0){
+    H.textContent='Business request'; M.textContent='Input from the product owner';
+    D.innerHTML=`<pre class="story anim">${esc(T.story.trim())}</pre>
+      <div class="callout sec">Press <b>Play run</b> to watch the orchestrator turn this request into Salesforce metadata, Apex and tests that pass the quality gates, review and approval, step by step.</div>`;
+    return;
+  }
+  const e=EV[selected]; let h='';
+  M.textContent=`Event ${e.seq} · ${time(e.time)} UTC`;
+  if(e.kind==='plan'){
+    H.textContent='Orchestrator · plan';
+    const label={requirements:'BA',architect:'Architect',developer:'Apex Developer',tester:'Apex Test',static_analysis:'Static analysis',org_validation:'Org validation',reviewer:'Review',security:'Security',human_gate:'Human gate',release:'DevOps'};
+    h=`<div class="detail-title"><h3>Task graph created</h3><span class="pill info">Orchestrator</span></div>
+      <p class="summary">The orchestrator breaks the request into a dependency graph. Independent steps run in parallel, and every quality gate sends failures back to the agent that owns the failing files.</p>
+      <div class="flow"><span class="box">BA</span><span class="arr">→</span><span class="box">Architect</span><span class="arr">→</span><span class="box">Apex Developer ∥ Apex Test</span><span class="arr">→</span><span class="box">Static analysis</span><span class="arr">→</span><span class="box">Org validation</span><span class="arr">↺</span><span class="arr">→</span><span class="box">Review ∥ Security</span><span class="arr">→</span><span class="box">Human gate</span><span class="arr">→</span><span class="box">DevOps</span></div>
+      <div class="sec"><h4>Dependencies</h4>${e.graph.map(g=>`<div class="meta mono">${label[g.id]} ← ${g.after.length?g.after.map(x=>label[x]).join(', '):'(start)'}</div>`).join('')}</div>`;
+  } else if(e.kind==='agent'){
+    H.textContent=e.agent_name;
+    h=`<div class="detail-title"><h3>${esc(e.step)}</h3>${verdictPill(e.verdict)}</div><p class="summary">${esc(e.summary)}</p>`;
+    if(e.findings&&e.findings.length) h+=`<div class="sec"><h4>Findings</h4>${e.findings.map(f=>`<div class="finding">${sevPill(f.severity)}<div>${esc(f.text)}</div></div>`).join('')}</div>`;
+    const files=e.files||[];
+    if(files.length){
+      const main = files.filter(f=>!/-meta\.xml$/.test(f)).sort((x,y)=>e.file_contents[y].length-e.file_contents[x].length)[0] || files[files.length-1];
+      const cur = fileTab[selected] && files.includes(fileTab[selected]) ? fileTab[selected] : main;
+      const prev = fileBefore(selected,cur);
+      const content = e.file_contents[cur];
+      const isDiff = prev!=null && prev!==content;
+      h+=`<div class="sec"><h4>Files written${isDiff?' · showing changes from the previous version':''}</h4>
+        <div class="tabs">${files.map(f=>`<button class="tab ${f===cur?'on':''}" data-f="${esc(f)}">${esc(f)}</button>`).join('')}</div>
+        ${/\.md$/.test(cur)&&!isDiff?`<div class="md">${md(content)}</div>`:codeView(cur,content,prev)}</div>`;
+    }
+  } else if(e.kind==='tool'){
+    H.textContent=e.tool_name||e.tool;
+    const state = e.skipped?['SKIPPED','warn']:e.passed?['PASSED','ok']:['FAILED','bad'];
+    const msg = e.skipped ? 'No Salesforce org is connected in this run, so the orchestrator records the gate as skipped and keeps going. With an org connected (SF_TARGET_ORG), it validates the deployment and runs the Apex tests, and sends any failure or low coverage back to the right agent.'
+      : e.tool==='static_analysis' ? (e.passed ? 'Metadata checks and PMD Apex rules are clean. The change moves on to org validation.'
+        : 'The gate found governor-limit risks before any human reviewed the code: SOQL and DML inside a loop would fail on a 200-record Data Loader batch. The orchestrator sends the findings to the agent that owns the file.')
+      : (e.passed ? 'Deployment validated and Apex tests passed with sufficient coverage.' : 'Org validation failed; the orchestrator routes the failures back.');
+    h=`<div class="detail-title"><h3>${esc(e.summary)}</h3><span class="pill ${state[1]}">${state[0]}</span></div><p class="summary">${msg}</p>`;
+    if(e.violations && e.violations.length) h+=`<div class="sec"><h4>Violations</h4><table class="vt"><tr><th>File</th><th>Line</th><th>Rule</th><th>Message</th></tr>${e.violations.map(v=>`<tr><td class="mono">${esc(v.file.split('/').pop())}</td><td class="mono">${v.line??'–'}</td><td><span class="pill ${/Loop|CRUD|Sharing|SOQLInjection/.test(v.rule)?'bad':'warn'}">${esc(v.rule)}</span></td><td>${esc(v.message)}</td></tr>`).join('')}</table></div>`;
+    h+=`<div class="sec"><h4>${e.skipped?'Gate configuration':'Tool output (executed for real)'}</h4><pre class="out">${pytestOut(e.output)}</pre></div>`;
+  } else if(e.kind==='route'){
+    H.textContent='Orchestrator · feedback loop';
+    h=`<div class="detail-title"><h3>${esc(e.gate)} findings routed to the ${esc(e.to_name||'Developer Agent')}</h3><span class="pill warn">Iteration ${e.iteration}</span></div>
+      <p class="summary">The orchestrator looks at which files failed and sends the findings to the agent that owns them (the Apex Developer for production code, the Apex Test agent for test classes), along with the requirements, the design and the current source. The loop is capped (default 3 iterations) and escalates to a human if it can't converge.</p>`;
+  } else if(e.kind==='human_gate'){
+    H.textContent='Human approval gate';
+    h=`<div class="detail-title"><h3>Release ${e.approved?'approved':'rejected'}</h3><span class="pill ${e.approved?'ok':'bad'}">${e.approved?'APPROVED':'REJECTED'}</span></div>
+      <p class="summary">Before release, the orchestrator stops and presents test results, review and security verdicts and every finding to an accountable person. Nothing ships without this decision, and it is logged in the audit trail.</p>
+      <div class="sec"><h4>Decision record</h4><div class="finding"><div><b>${esc(e.approver)}</b> · ${esc(e.time)}<br><span class="meta">${esc(e.comment||'')}</span></div></div></div>`;
+  } else if(e.kind==='escalate'){
+    H.textContent='Escalated to a human'; h=`<p class="summary">${esc(e.reason)}</p>`;
+  }
+  D.innerHTML=`<div class="anim">${h}</div>`;
+  D.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{fileTab[selected]=b.dataset.f;renderDetail()});
+}
+
+// ---------- pipeline, KPIs, log ----------
+function renderPipe(){
+  const st={}; const seen=EV.slice(0,pos);
+  for(const e of seen){
+    const n=nodeOf(e); if(!n) continue;
+    if(e.kind==='tool') st[n]=e.skipped?'skip':e.passed?'done':'fail';
+    else if(e.kind==='route') st[n]='active';
+    else st[n]='done';
+  }
+  const cur = pos>0 ? nodeOf(EV[pos-1]) : null;
+  const selNode = selected>=0 && pos>0 ? nodeOf(EV[selected]) : null;
+  const loops = seen.filter(e=>e.kind==='route').length;
+  document.getElementById('pipe').innerHTML=NODES.map(n=>{
+    let cls=st[n.id]||''; if(n.id===cur && pos<EV.length && cls!=='fail' && cls!=='skip') cls='active';
+    const label = cls==='done'?'done':cls==='fail'?'failed':cls==='skip'?'skipped':cls==='active'?'working':'';
+    const extra = n.id==='developer'&&loops?` · ${loops} fix`:'';
+    return `<li class="node ${cls} ${n.para?'para':''} ${n.id===selNode?'sel':''}" data-n="${n.id}"><div class="ic">${cls==='done'?'✓':n.ic}</div><div><div class="nm">${n.nm}</div><div class="rl">${n.rl}</div></div><div class="st">${label}${extra}</div></li>`;
+  }).join('');
+  document.querySelectorAll('.node').forEach(li=>li.onclick=()=>{
+    for(let i=pos-1;i>=0;i--) if(nodeOf(EV[i])===li.dataset.n){selected=i;render();return;}
+  });
+}
+function renderKpis(){
+  const seen=EV.slice(0,pos), agents=seen.filter(e=>e.kind==='agent');
+  const files=new Set(); agents.forEach(e=>(e.files||[]).forEach(f=>files.add(f)));
+  const sa=seen.filter(e=>e.kind==='tool'&&e.tool==='static_analysis'), last=sa[sa.length-1];
+  document.getElementById('kAgents').textContent=agents.length;
+  document.getElementById('kFiles').textContent=files.size;
+  const kt=document.getElementById('kTests');
+  kt.textContent = last ? (last.passed?'Clean':`${last.violations.length} issues`) : '–';
+  kt.style.color = last ? (last.passed?'var(--green)':'var(--red)') : '';
+  document.getElementById('kLoops').textContent=seen.filter(e=>e.kind==='route').length;
+  document.getElementById('kFind').textContent=agents.reduce((a,e)=>a+(e.findings||[]).length,0);
+  const ks=document.getElementById('kStatus');
+  ks.textContent = pos===0?'Not started': pos<EV.length?'Running…': (T.status||'').toUpperCase();
+  ks.style.color = pos===EV.length && T.status==='released' ? 'var(--green)' : pos>0 ? 'var(--orange)' : '';
+  document.getElementById('prog').style.width=(pos/EV.length*100)+'%';
+  document.getElementById('counter').textContent=`Step ${pos} / ${EV.length}`;
+}
+function outcome(e){
+  if(e.kind==='plan') return `${e.graph.length} tasks planned`;
+  if(e.kind==='agent') return e.verdict ? `${e.verdict.replace('_',' ')} · ${(e.findings||[]).length} findings` : `${(e.files||[]).length} file(s): ${(e.files||[]).filter(f=>!/-meta\.xml$/.test(f)).map(f=>f.split('/').pop()).join(', ')}`;
+  if(e.kind==='tool') return e.summary;
+  if(e.kind==='route') return `Routed to ${e.to_name||'Developer'} (iteration ${e.iteration})`;
+  if(e.kind==='human_gate') return `${e.approved?'Approved':'Rejected'} by ${e.approver}`;
+  return e.reason||'';
+}
+function actor(e){return e.kind==='agent'?e.agent_name:e.kind==='tool'?'Gate · '+(e.tool_name||e.tool).split(' (')[0]:e.kind==='human_gate'?'Human · '+e.approver:'Orchestrator'}
+function action(e){return e.kind==='agent'?e.step:e.kind==='plan'?'Build task graph':e.kind==='tool'?(e.tool==='static_analysis'?'Metadata checks + PMD Apex rules':'sf project deploy validate + Apex tests'):e.kind==='route'?'Feedback loop':e.kind==='human_gate'?'Release approval':e.kind}
+function renderLog(){
+  document.getElementById('logBody').innerHTML=EV.map((e,i)=>`<tr data-i="${i}" class="${i>=pos?'future':''} ${i===selected?'cur':''}"><td class="mono">${e.seq}</td><td class="mono">${time(e.time)}</td><td>${esc(actor(e))}</td><td>${esc(action(e))}</td><td>${esc(outcome(e))}</td></tr>`).join('');
+  document.querySelectorAll('#logBody tr').forEach(tr=>tr.onclick=()=>{selected=+tr.dataset.i;render();document.querySelector('.grid').scrollIntoView({behavior:'smooth',block:'start'})});
+}
+function render(){renderPipe();renderKpis();renderLog();renderDetail();
+  document.getElementById('stepBtn').disabled=pos>=EV.length; document.getElementById('allBtn').disabled=pos>=EV.length;}
+
+// ---------- playback ----------
+function step(){ if(pos<EV.length){pos++;selected=pos-1;render();} if(pos>=EV.length) stop(); }
+function stop(){clearInterval(timer);timer=null;document.getElementById('playBtn').textContent=pos>=EV.length?'▶ Replay':'▶ Play run';}
+document.getElementById('playBtn').onclick=()=>{
+  if(timer){stop();return}
+  if(pos>=EV.length){pos=0;selected=-1;fileTab={};}
+  step(); timer=setInterval(step,+document.getElementById('speed').value);
+  document.getElementById('playBtn').textContent='⏸ Pause';
+};
+document.getElementById('stepBtn').onclick=()=>{stop();step()};
+document.getElementById('allBtn').onclick=()=>{stop();pos=EV.length;selected=EV.length-1;render();stop()};
+document.getElementById('resetBtn').onclick=()=>{stop();pos=0;selected=-1;fileTab={};render()};
+document.getElementById('speed').onchange=()=>{if(timer){clearInterval(timer);timer=setInterval(step,+document.getElementById('speed').value)}};
+
+document.getElementById('runId').textContent=T.run_id;
+document.getElementById('modeBadge').innerHTML = T.mode==='live'
+  ? `<span class="dot" style="background:var(--green)"></span>Live run · model <b>${esc(T.model)}</b>`
+  : `<span class="dot" style="background:var(--blue)"></span><b>Recorded run</b> · quality gates executed for real`;
+document.getElementById('foot').innerHTML = T.mode==='live'
+  ? `Live run on ${esc(T.started)} with ${esc(T.model)}.`
+  : `This page replays a recorded run of the Salesforce POC. Agent responses were recorded and replayed through the real orchestrator; the metadata checks and PMD Apex analysis ran for real at each step. The first-build governor-limit defect was included in the recording to demonstrate the feedback loop. No Salesforce org was connected, so org validation (deploy + Apex tests) shows as skipped. Run the POC with an Anthropic API key and SF_TARGET_ORG set to produce a fully live trace.`;
+selected=-1; render();
+</script>
+</body>
+</html>

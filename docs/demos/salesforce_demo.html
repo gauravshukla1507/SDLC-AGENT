@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agentic SDLC for Salesforce – POC Demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --navy:#0F1B2D; --navy2:#16263D; --navy3:#1E3150; --line:#2A3D5A;
+  --paper:#F4F1EA; --muted:#A9B4C4; --orange:#F2864F; --green:#4CC38A; --red:#F0616D; --yellow:#E8C35A; --blue:#6AA7FF;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--navy);color:var(--paper);font-family:Inter,system-ui,sans-serif;font-size:15px;line-height:1.5}
+h1,h2,h3{font-family:"Space Grotesk",Inter,sans-serif;margin:0;letter-spacing:-.01em}
+code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace}
+.wrap{max-width:1440px;margin:0 auto;padding:28px 28px 48px}
+header{display:flex;justify-content:space-between;gap:24px;align-items:flex-end;flex-wrap:wrap;margin-bottom:20px}
+.kicker{color:var(--orange);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;margin-bottom:6px}
+header h1{font-size:30px;line-height:1.15}
+header p{color:var(--muted);margin:6px 0 0;max-width:760px}
+.badge{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--muted);background:var(--navy2)}
+.badge b{color:var(--paper);font-weight:600}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);display:inline-block;flex:none}
+
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:var(--navy2);border:1px solid var(--line);border-radius:14px;padding:12px 14px;margin-bottom:16px}
+button{font:inherit;cursor:pointer;border-radius:10px;border:1px solid var(--line);background:var(--navy3);color:var(--paper);padding:8px 14px;font-weight:600}
+button:hover{border-color:var(--orange)}
+button.primary{background:var(--orange);border-color:var(--orange);color:var(--navy)}
+button:disabled{opacity:.4;cursor:default}
+select{font:inherit;background:var(--navy3);color:var(--paper);border:1px solid var(--line);border-radius:10px;padding:7px 10px}
+.progress{flex:1;min-width:160px;height:6px;background:var(--navy3);border-radius:6px;overflow:hidden}
+.progress>div{height:100%;width:0;background:var(--orange);transition:width .4s}
+.counter{color:var(--muted);font-size:13px;min-width:90px;text-align:right}
+
+.kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+.kpi{background:var(--navy2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.kpi .v{font-family:"Space Grotesk",Inter,sans-serif;font-size:26px;font-weight:700;line-height:1.1}
+.kpi .l{color:var(--muted);font-size:12px}
+.kpi.status .v{font-size:20px}
+
+.grid{display:grid;grid-template-columns:300px minmax(0,1fr);gap:16px;align-items:start}.grid>*{min-width:0}
+.panel{background:var(--navy2);border:1px solid var(--line);border-radius:14px}
+.panel-h{padding:14px 16px;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:8px}
+.panel-h h2{font-size:15px}
+.panel-b{padding:16px}
+
+.pipe{list-style:none;margin:0;padding:10px}
+.node{display:flex;gap:12px;align-items:center;padding:10px;border-radius:10px;cursor:pointer;position:relative;border:1px solid transparent}
+.node:hover{background:var(--navy3)}
+.node.sel{border-color:var(--orange);background:var(--navy3)}
+.node .ic{width:34px;height:34px;border-radius:9px;background:var(--navy3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-family:"Space Grotesk",Inter,sans-serif;font-weight:700;font-size:13px;color:var(--muted);flex:none;transition:all .3s}
+.node .nm{font-weight:600;font-size:14px}
+.node .rl{color:var(--muted);font-size:12px;line-height:1.3}
+.node .st{margin-left:auto;font-size:11px;color:var(--muted)}
+.node.active .ic{background:var(--orange);color:var(--navy);border-color:var(--orange);box-shadow:0 0 0 4px rgba(242,134,79,.2)}
+.node.done .ic{background:#183A31;border-color:var(--green);color:var(--green)}
+.node.skip .ic{background:#332C17;border-color:var(--yellow);color:var(--yellow)}
+.node.fail .ic{background:#3D1E26;border-color:var(--red);color:var(--red)}
+.node.para::before{content:"";position:absolute;left:-2px;top:12px;bottom:12px;width:3px;border-radius:3px;background:var(--blue);opacity:.7}
+.legend{padding:0 16px 14px;color:var(--muted);font-size:12px;display:flex;gap:14px;flex-wrap:wrap}
+.legend span{display:inline-flex;gap:6px;align-items:center}
+
+.detail-title{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.detail-title h3{font-size:22px}
+.pill{font-size:12px;font-weight:600;border-radius:999px;padding:3px 10px;border:1px solid var(--line);color:var(--muted)}
+.pill.ok{color:var(--green);border-color:var(--green);background:#13302A}
+.pill.bad{color:var(--red);border-color:var(--red);background:#331A21}
+.pill.warn{color:var(--yellow);border-color:var(--yellow);background:#332C17}
+.pill.info{color:var(--blue);border-color:var(--blue);background:#172943}
+.summary{font-size:16px;color:#DCE3EC;margin:12px 0 16px;max-width:980px}
+.meta{color:var(--muted);font-size:12px;margin-top:4px}
+.sec{margin-top:18px}
+.sec h4{margin:0 0 8px;font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.finding{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border:1px solid var(--line);border-radius:10px;margin-bottom:8px;background:var(--navy)}
+.finding .pill{flex:none;margin-top:1px}
+.tabs{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:-1px;position:relative;z-index:1}
+.tab{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;font-size:12px;padding:7px 12px;border:1px solid var(--line);border-bottom:none;border-radius:8px 8px 0 0;background:var(--navy);color:var(--muted);font-weight:400}
+.tab.on{background:#0B1422;color:var(--paper);border-color:var(--orange)}
+.code{font-family:"JetBrains Mono",ui-monospace,Menlo,monospace;background:#0B1422;border:1px solid var(--line);border-radius:0 10px 10px 10px;max-height:460px;overflow:auto;font-size:12.5px;line-height:1.55}
+.code table{border-collapse:collapse;width:100%}
+.code td{padding:0 12px;white-space:pre;vertical-align:top}
+.code tr.gap td{color:#4D6080;background:#101C2E;font-style:italic;padding:2px 12px}
+.vt{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}.vt th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:6px 10px;border-bottom:1px solid var(--line)}.vt td{padding:8px 10px;border-bottom:1px solid #22344F;vertical-align:top}
+.code td.n{color:#4D6080;text-align:right;user-select:none;width:1%;padding-right:10px;border-right:1px solid var(--line)}
+.code tr.add td{background:rgba(76,195,138,.13)} .code tr.add td.n{color:var(--green)}
+.code tr.del td{background:rgba(240,97,109,.13);text-decoration:line-through;text-decoration-color:rgba(240,97,109,.5)} .code tr.del td.n{color:var(--red)}
+.k{color:#C792EA}.s{color:#C3E88D}.c{color:#6A7E9C;font-style:italic}.fn{color:#82AAFF}
+pre.out{background:#0B1422;border:1px solid var(--line);border-radius:10px;padding:14px;max-height:380px;overflow:auto;font-size:12.5px;white-space:pre-wrap;margin:0}
+pre.out .f{color:var(--red)} pre.out .p{color:var(--green)}
+.callout{border-left:3px solid var(--orange);background:var(--navy);padding:12px 14px;border-radius:0 10px 10px 0;color:#DCE3EC}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.flow .box{border:1px solid var(--line);background:var(--navy);border-radius:8px;padding:6px 10px;font-size:13px}
+.flow .arr{color:var(--orange)}
+.story{white-space:pre-wrap;background:var(--navy);border:1px solid var(--line);border-radius:10px;padding:14px;font-size:14px;color:#DCE3EC;margin:0}
+.md{background:var(--paper);color:#14202E;border-radius:10px;padding:18px 22px;max-height:460px;overflow:auto;font-size:14px}
+.md h1{font-size:20px;margin:0 0 10px}.md h2{font-size:16px;margin:16px 0 6px}.md table{border-collapse:collapse;width:100%;margin:8px 0}
+.md th,.md td{border:1px solid #CFC8B8;padding:5px 8px;text-align:left;vertical-align:top}.md th{background:#E7E2D6}
+.md pre{background:#E7E2D6;padding:10px;border-radius:6px;overflow:auto;font-size:12px}.md code{font-size:12.5px}
+.md ul,.md ol{padding-left:22px;margin:6px 0}
+
+.log{margin-top:16px}
+.log table{width:100%;border-collapse:collapse;font-size:13px}
+.log th{text-align:left;color:var(--muted);font-weight:600;font-size:11px;letter-spacing:.08em;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid var(--line)}
+.log td{padding:8px 12px;border-bottom:1px solid #22344F;vertical-align:top}
+.log tr{cursor:pointer}.log tr:hover td{background:var(--navy3)}
+.log tr.cur td{background:#24314A}
+.log tr.future{display:none}
+.foot{color:var(--muted);font-size:12px;margin-top:18px;line-height:1.6}
+.empty{color:var(--muted);text-align:center;padding:60px 20px}
+@keyframes pop{from{opacity:0;transform:translateY(6px)}}
+.anim{animation:pop .35s ease-out both}
+@media (max-width:980px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(3,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <div class="kicker">Multi-agent orchestration for Salesforce · POC demo</div>
+      <h1>From business request to a deployable Salesforce change, run by an AI delivery team</h1>
+      <p>One orchestrator coordinates seven Salesforce specialist agents (BA, architect, Apex developer, Apex tester, reviewer, security and DevOps) through governor-limit, security and org-validation gates, with a human approval before anything is deployed.</p>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <span class="badge"><span class="dot" style="background:var(--orange)"></span>Run <b id="runId"></b></span>
+      <span class="badge" id="modeBadge"></span>
+    </div>
+  </header>
+
+  <div class="controls">
+    <button class="primary" id="playBtn">▶ Play run</button>
+    <button id="stepBtn">Step →</button>
+    <button id="allBtn">Show all</button>
+    <button id="resetBtn">↺ Reset</button>
+    <select id="speed" aria-label="Playback speed"><option value="2600">Presenter pace</option><option value="1400" selected>Normal</option><option value="600">Fast</option></select>
+    <div class="progress"><div id="prog"></div></div>
+    <div class="counter" id="counter"></div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v" id="kAgents">0</div><div class="l">Agent tasks completed</div></div>
+    <div class="kpi"><div class="v" id="kFiles">0</div><div class="l">Files produced</div></div>
+    <div class="kpi"><div class="v" id="kTests">–</div><div class="l">Static analysis (PMD Apex)</div></div>
+    <div class="kpi"><div class="v" id="kLoops">0</div><div class="l">Auto-fix iterations</div></div>
+    <div class="kpi"><div class="v" id="kFind">0</div><div class="l">Review &amp; security findings</div></div>
+    <div class="kpi status"><div class="v" id="kStatus">Not started</div><div class="l">Run status</div></div>
+  </div>
+
+  <div class="grid">
+    <div class="panel">
+      <div class="panel-h"><h2>Orchestrated pipeline</h2></div>
+      <ul class="pipe" id="pipe"></ul>
+      <div class="legend">
+        <span><span class="dot" style="background:var(--orange)"></span>Working</span>
+        <span><span class="dot" style="background:var(--green)"></span>Done</span>
+        <span><span class="dot" style="background:var(--red)"></span>Failed → rerouted</span>
+        <span><span class="dot" style="background:var(--yellow)"></span>Skipped (no org)</span>
+        <span><span class="dot" style="background:var(--blue)"></span>Runs in parallel</span>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-h"><h2 id="detailHead">Business request</h2><span class="meta" id="detailMeta"></span></div>
+      <div class="panel-b" id="detail"></div>
+    </div>
+  </div>
+
+  <div class="panel log">
+    <div class="panel-h"><h2>Audit trail</h2><span class="meta">Every agent action, tool run and human decision is logged (trace.json)</span></div>
+    <div style="overflow:auto"><table><thead><tr><th>#</th><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Outcome</th></tr></thead><tbody id="logBody"></tbody></table></div>
+  </div>
+
+  <p class="foot" id="foot"></p>
+</div>
+
+<script id="trace" type="application/json">{"run_id": "e09e6022", "started": "2026-11-23T08:57:13+00:00", "platform": "salesforce", "model": "recorded", "events": [{"seq": 1, "time": "2026-11-23T08:57:13+00:00", "kind": "plan", "graph": [{"id": "requirements", "after": []}, {"id": "architect", "after": ["requirements"]}, {"id": "developer", "after": ["architect"]}, {"id": "tester", "after": ["architect"]}, {"id": "static_analysis", "after": ["developer", "tester"]}, {"id": "org_validation", "after": ["static_analysis"]}, {"id": "reviewer", "after": ["org_validation"]}, {"id": "security", "after": ["org_validation"]}, {"id": "human_gate", "after": ["reviewer", "security"]}, {"id": "release", "after": ["human_gate"]}]}, {"seq": 2, "time": "2026-11-23T08:57:13+00:00", "kind": "agent", "agent": "requirements", "agent_name": "Salesforce BA Agent", "step": "Write user story & acceptance criteria", "summary": "Turned the Sales Ops request into one user story with 7 testable acceptance criteria: onboarding Case creation, Account activation, amount-based priority, de-duplication per Account, firing only on the transition to Closed Won, 200-record bulk safety, and least-privilege access for Standard User reps via a permission set. Identified two new fields (Account.Customer_Status__c, Case.Is_Onboarding__c) and assumed the standard \"Closed Won\" stage and Case object are in use.", "files": ["docs/requirements.md"], "file_contents": {"docs/requirements.md": "# Closed Won \u2192 onboarding handoff (Sales Cloud)\n\n## User story\n**As a** Sales Operations manager\n**I want** an onboarding Case to be created automatically when an Opportunity is Closed Won\n**So that** the onboarding team starts immediately and no customer is missed.\n\n## Acceptance criteria\n| ID | Criterion |\n|----|-----------|\n| AC-1 | When an Opportunity becomes Closed Won, one Case is created on its Account with Subject \"Onboarding: <Account Name>\", Origin \"Sales Handoff\" and the onboarding flag set. |\n| AC-2 | The Account's Customer Status is set to \"Active Customer\". |\n| AC-3 | Case Priority is High when Opportunity Amount >= 100,000, otherwise Medium (blank amount = 0). |\n| AC-4 | No new onboarding Case if the Account already has an open one; one Case per Account even when several of its Opportunities close in the same transaction (highest amount decides priority). |\n| AC-5 | Fires only on the transition into Closed Won (insert as won, or update from a non-won stage). Later edits and Closed Lost do nothing. |\n| AC-6 | Works for Data Loader batches of 200 Opportunities without hitting governor limits. |\n| AC-7 | A Standard User sales rep with the \"Onboarding Automation\" permission set can close a deal and the automation succeeds; no profile changes. |\n\n## Impacted objects and fields\n| Object | Field | Type | New? |\n|--------|-------|------|------|\n| Account | Customer_Status__c | Picklist (Prospect, Active Customer, Former Customer) | New |\n| Case | Is_Onboarding__c | Checkbox | New |\n| Opportunity | StageName, IsWon, Amount, AccountId | Standard | Existing |\n\n## Personas and access\n- Sales rep (Standard User profile): closes Opportunities; needs Case create and edit access to Customer Status, granted by permission set.\n- Onboarding team: works the Cases (existing access, out of scope).\n\n## Volumes\n- Up to 200 Opportunities per Data Loader batch; Opportunity updates throughout the day.\n\n## Assumptions\n- Standard \"Closed Won\" stage (IsWon = true). Multi-currency not enabled; Amount is in the corporate currency.\n- Case assignment rules / queues are handled by existing org configuration.\n\n## Out of scope\n- Case assignment to a specific queue, email notifications, reopening onboarding for returning customers.\n"}, "verdict": null, "findings": [], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 3, "time": "2026-11-23T08:57:13+00:00", "kind": "agent", "agent": "architect", "agent_name": "Solution Architect Agent", "step": "Design data model, automation & security", "summary": "Chose an Apex trigger with a handler and a bulk-safe service over a record-triggered Flow, because AC-4 (one case per Account across a batch, highest amount wins) and AC-6 (200-record loads with an explicit SOQL budget) are simpler to guarantee and test in Apex. Designed two new fields, a least-privilege permission set, a logic-free trigger, OpportunityTriggerHandler and OnboardingService with one SOQL and two DML per transaction in user mode, and the OnboardingServiceTest class, with every acceptance criterion mapped.", "files": ["docs/design.md"], "file_contents": {"docs/design.md": "# Solution design: Closed Won \u2192 onboarding handoff\n\n## Clicks vs code\n| Option | Assessment |\n|--------|------------|\n| Record-triggered Flow | Meets AC-1/2/3/5, but AC-4 (one Case per Account across a 200-record batch, highest amount wins) needs collection logic that is hard to read and test in Flow. |\n| **Apex trigger + service (chosen)** | Explicit bulk de-duplication, a fixed SOQL/DML budget, and unit tests per acceptance criterion. |\n\n## Data model\n- `Account.Customer_Status__c` \u2013 restricted picklist: Prospect, Active Customer, Former Customer; history tracked.\n- `Case.Is_Onboarding__c` \u2013 checkbox, default false; identifies onboarding Cases (no subject matching).\n\n## Automation\n```\nOpportunityTrigger (after insert, after update)        // no logic, one trigger per object\n  -> OpportunityTriggerHandler.run()                   // routes by Trigger context\n       -> OnboardingService.handleClosedWon(List<Opportunity> newOpps, Map<Id, Opportunity> oldMap)\n```\n`handleClosedWon` algorithm (bulk-safe):\n1. Collect Opportunities that just became won (`IsWon` and old not won, or insert) with an AccountId;\n   keep one per Account, the highest Amount (blank = 0).\n2. ONE query: Accounts in that set with a subquery of open onboarding Cases (`LIMIT 1`), `WITH USER_MODE`.\n3. Build Account updates (Customer_Status__c = Active Customer) and Cases for Accounts with no open onboarding Case.\n4. TWO DML statements: `insert as user` Cases, `update as user` Accounts.\nConstants: Origin \"Sales Handoff\", status \"Active Customer\", high-priority threshold 100,000.\n\n## Security\n- All classes `with sharing`; SOQL `WITH USER_MODE`; DML `as user`.\n- Permission set `Onboarding_Automation`: Case read/create, edit on `Account.Customer_Status__c` and `Case.Is_Onboarding__c`,\n  Apex class access. No profile changes.\n\n## Files\n| Owner | File |\n|-------|------|\n| Developer | objects/Account/fields/Customer_Status__c.field-meta.xml |\n| Developer | objects/Case/fields/Is_Onboarding__c.field-meta.xml |\n| Developer | permissionsets/Onboarding_Automation.permissionset-meta.xml |\n| Developer | triggers/OpportunityTrigger.trigger (+ meta) |\n| Developer | classes/OpportunityTriggerHandler.cls, classes/OnboardingService.cls (+ meta) |\n| Test | classes/OnboardingServiceTest.cls (+ meta) |\n\n## Governor-limit budget\n1 SOQL + 2 DML per trigger invocation, independent of batch size (200 records \u2192 still 1 SOQL).\n\n## Traceability\n| AC | Design element |\n|----|----------------|\n| AC-1 | step 3 case build, Is_Onboarding__c |\n| AC-2 | step 3 account update |\n| AC-3 | threshold constant, highest amount per Account |\n| AC-4 | step 1 one-per-Account, step 2 open-case subquery |\n| AC-5 | step 1 transition check |\n| AC-6 | single query + two DML |\n| AC-7 | permission set, user-mode operations |\n"}, "verdict": null, "findings": [], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 4, "time": "2026-11-23T08:57:13+00:00", "kind": "agent", "agent": "developer", "agent_name": "Apex Developer Agent", "step": "Build Apex, trigger & metadata", "summary": "Built the two custom fields, the Onboarding_Automation permission set, a logic-free OpportunityTrigger delegating to OpportunityTriggerHandler, and OnboardingService implementing the Closed Won handoff in user mode with sharing enforced. Each class and trigger has its -meta.xml at API 62.0.", "files": ["force-app/main/default/classes/OnboardingService.cls", "force-app/main/default/classes/OnboardingService.cls-meta.xml", "force-app/main/default/classes/OpportunityTriggerHandler.cls", "force-app/main/default/classes/OpportunityTriggerHandler.cls-meta.xml", "force-app/main/default/objects/Account/fields/Customer_Status__c.field-meta.xml", "force-app/main/default/objects/Case/fields/Is_Onboarding__c.field-meta.xml", "force-app/main/default/permissionsets/Onboarding_Automation.permissionset-meta.xml", "force-app/main/default/triggers/OpportunityTrigger.trigger", "force-app/main/default/triggers/OpportunityTrigger.trigger-meta.xml"], "file_contents": {"force-app/main/default/objects/Account/fields/Customer_Status__c.field-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CustomField xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <fullName>Customer_Status__c<\/fullName>\n    <label>Customer Status<\/label>\n    <description>Lifecycle status of the customer. Set to Active Customer automatically when an opportunity is Closed Won.<\/description>\n    <required>false<\/required>\n    <trackHistory>true<\/trackHistory>\n    <type>Picklist<\/type>\n    <valueSet>\n        <restricted>true<\/restricted>\n        <valueSetDefinition>\n            <sorted>false<\/sorted>\n            <value><fullName>Prospect<\/fullName><default>false<\/default><label>Prospect<\/label><\/value>\n            <value><fullName>Active Customer<\/fullName><default>false<\/default><label>Active Customer<\/label><\/value>\n            <value><fullName>Former Customer<\/fullName><default>false<\/default><label>Former Customer<\/label><\/value>\n        <\/valueSetDefinition>\n    <\/valueSet>\n<\/CustomField>\n", "force-app/main/default/objects/Case/fields/Is_Onboarding__c.field-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<CustomField xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <fullName>Is_Onboarding__c<\/fullName>\n    <label>Is Onboarding<\/label>\n    <description>Marks cases created by the sales-to-onboarding handoff automation.<\/description>\n    <defaultValue>false<\/defaultValue>\n    <type>Checkbox<\/type>\n<\/CustomField>\n", "force-app/main/default/permissionsets/Onboarding_Automation.permissionset-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<PermissionSet xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <label>Onboarding Automation<\/label>\n    <description>Grants sales users the access the Closed Won to onboarding automation needs (runs in user mode).<\/description>\n    <hasActivationRequired>false<\/hasActivationRequired>\n    <fieldPermissions>\n        <editable>true<\/editable>\n        <field>Account.Customer_Status__c<\/field>\n        <readable>true<\/readable>\n    <\/fieldPermissions>\n    <fieldPermissions>\n        <editable>true<\/editable>\n        <field>Case.Is_Onboarding__c<\/field>\n        <readable>true<\/readable>\n    <\/fieldPermissions>\n    <objectPermissions>\n        <allowCreate>true<\/allowCreate>\n        <allowDelete>false<\/allowDelete>\n        <allowEdit>false<\/allowEdit>\n        <allowRead>true<\/allowRead>\n        <modifyAllRecords>false<\/modifyAllRecords>\n        <object>Case<\/object>\n        <viewAllRecords>false<\/viewAllRecords>\n    <\/objectPermissions>\n    <classAccesses>\n        <apexClass>OnboardingService<\/apexClass>\n        <enabled>true<\/enabled>\n    <\/classAccesses>\n    <classAccesses>\n        <apexClass>OpportunityTriggerHandler<\/apexClass>\n        <enabled>true<\/enabled>\n    <\/classAccesses>\n<\/PermissionSet>\n", "force-app/main/default/triggers/OpportunityTrigger.trigger": "trigger OpportunityTrigger on Opportunity (after insert, after update) {\n    OpportunityTriggerHandler.run();\n}\n", "force-app/main/default/triggers/OpportunityTrigger.trigger-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ApexTrigger xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <apiVersion>62.0<\/apiVersion>\n    <status>Active<\/status>\n<\/ApexTrigger>\n", "force-app/main/default/classes/OpportunityTriggerHandler.cls": "/**\n * Routes Opportunity trigger events to services. Keeps the trigger itself logic-free.\n */\npublic with sharing class OpportunityTriggerHandler {\n    /** Entry point called from OpportunityTrigger. */\n    public static void run() {\n        if (Trigger.isAfter && Trigger.isInsert) {\n            OnboardingService.handleClosedWon((List<Opportunity>) Trigger.new, null);\n        } else if (Trigger.isAfter && Trigger.isUpdate) {\n            OnboardingService.handleClosedWon(\n                (List<Opportunity>) Trigger.new,\n                (Map<Id, Opportunity>) Trigger.oldMap\n            );\n        }\n    }\n}\n", "force-app/main/default/classes/OpportunityTriggerHandler.cls-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ApexClass xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <apiVersion>62.0<\/apiVersion>\n    <status>Active<\/status>\n<\/ApexClass>\n", "force-app/main/default/classes/OnboardingService.cls": "/**\n * Creates onboarding Cases and activates Accounts when Opportunities become Closed Won.\n */\npublic with sharing class OnboardingService {\n    @TestVisible\n    private static final String CASE_ORIGIN = 'Sales Handoff';\n    @TestVisible\n    private static final String ACTIVE_STATUS = 'Active Customer';\n    @TestVisible\n    private static final Decimal HIGH_PRIORITY_AMOUNT = 100000;\n\n    /**\n     * @param newOpps Trigger.new\n     * @param oldMap  Trigger.oldMap (null on insert)\n     */\n    public static void handleClosedWon(List<Opportunity> newOpps, Map<Id, Opportunity> oldMap) {\n        for (Opportunity opp : newOpps) {\n            Opportunity old = oldMap == null ? null : oldMap.get(opp.Id);\n            Boolean becameWon = opp.IsWon && (old == null || !old.IsWon);\n            if (!becameWon || opp.AccountId == null) {\n                continue;\n            }\n\n            Account acc = [\n                SELECT Id, Name,\n                    (SELECT Id FROM Cases WHERE Is_Onboarding__c = true AND IsClosed = false LIMIT 1)\n                FROM Account\n                WHERE Id = :opp.AccountId\n                WITH USER_MODE\n            ];\n            if (acc.Cases.isEmpty()) {\n                Decimal amount = opp.Amount == null ? 0 : opp.Amount;\n                insert as user new Case(\n                    AccountId = acc.Id,\n                    Subject = 'Onboarding: ' + acc.Name,\n                    Origin = CASE_ORIGIN,\n                    Priority = amount >= HIGH_PRIORITY_AMOUNT ? 'High' : 'Medium',\n                    Is_Onboarding__c = true,\n                    Description = 'Created automatically from Closed Won opportunity ' + opp.Name\n                );\n            }\n            update as user new Account(Id = acc.Id, Customer_Status__c = ACTIVE_STATUS);\n        }\n    }\n}\n", "force-app/main/default/classes/OnboardingService.cls-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ApexClass xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <apiVersion>62.0<\/apiVersion>\n    <status>Active<\/status>\n<\/ApexClass>\n"}, "verdict": null, "findings": [], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 5, "time": "2026-11-23T08:57:13+00:00", "kind": "agent", "agent": "tester", "agent_name": "Apex Test Agent", "step": "Write Apex test class from acceptance criteria", "summary": "Wrote OnboardingServiceTest with 9 test methods derived from the acceptance criteria and design only: case creation, account activation, priority boundary (100,000 vs 99,999.99), duplicate prevention, one case per Account per batch, transition-only firing, Closed Lost, a 200-Opportunity bulk load that also asserts the SOQL budget, and a System.runAs Standard User with the permission set.", "files": ["force-app/main/default/classes/OnboardingServiceTest.cls", "force-app/main/default/classes/OnboardingServiceTest.cls-meta.xml"], "file_contents": {"force-app/main/default/classes/OnboardingServiceTest.cls": "/**\n * Tests derived from docs/requirements.md (AC-1 .. AC-7).\n */\n@IsTest\nprivate class OnboardingServiceTest {\n    private static final String WON = 'Closed Won';\n    private static final String OPEN_STAGE = 'Prospecting';\n\n    @TestSetup\n    static void setup() {\n        insert new Account(Name = 'Acme Corp');\n    }\n\n    private static Account acme() {\n        return [SELECT Id, Name, Customer_Status__c FROM Account WHERE Name = 'Acme Corp' LIMIT 1];\n    }\n\n    private static Opportunity newOpp(Id accountId, String stage, Decimal amount) {\n        return new Opportunity(\n            Name = 'Deal ' + amount, AccountId = accountId, StageName = stage,\n            CloseDate = Date.today(), Amount = amount\n        );\n    }\n\n    private static List<Case> onboardingCases(Id accountId) {\n        return [SELECT Id, Subject, Origin, Priority FROM Case WHERE AccountId = :accountId AND Is_Onboarding__c = true];\n    }\n\n    @IsTest\n    static void closedWonCreatesOnboardingCase() {\n        Account acc = acme();\n        Opportunity opp = newOpp(acc.Id, OPEN_STAGE, 5000);\n        insert opp;\n\n        Test.startTest();\n        opp.StageName = WON;\n        update opp;\n        Test.stopTest();\n\n        List<Case> cases = onboardingCases(acc.Id);\n        Assert.areEqual(1, cases.size(), 'AC-1: exactly one onboarding case expected');\n        Assert.areEqual('Onboarding: Acme Corp', cases[0].Subject, 'AC-1: subject format');\n        Assert.areEqual('Sales Handoff', cases[0].Origin, 'AC-1: origin');\n    }\n\n    @IsTest\n    static void closedWonActivatesAccount() {\n        Account acc = acme();\n        Test.startTest();\n        insert newOpp(acc.Id, WON, 5000);\n        Test.stopTest();\n\n        Assert.areEqual('Active Customer', acme().Customer_Status__c, 'AC-2: account must be activated');\n    }\n\n    @IsTest\n    static void priorityDependsOnAmount() {\n        Account other = new Account(Name = 'Globex');\n        insert other;\n        Test.startTest();\n        insert new List<Opportunity>{ newOpp(acme().Id, WON, 100000), newOpp(other.Id, WON, 99999.99) };\n        Test.stopTest();\n\n        Assert.areEqual('High', onboardingCases(acme().Id)[0].Priority, 'AC-3: >= 100,000 is High');\n        Assert.areEqual('Medium', onboardingCases(other.Id)[0].Priority, 'AC-3: below 100,000 is Medium');\n    }\n\n    @IsTest\n    static void noDuplicateWhenOpenOnboardingCaseExists() {\n        Account acc = acme();\n        insert new Case(AccountId = acc.Id, Subject = 'Existing', Is_Onboarding__c = true, Status = 'New');\n\n        Test.startTest();\n        insert newOpp(acc.Id, WON, 5000);\n        Test.stopTest();\n\n        Assert.areEqual(1, onboardingCases(acc.Id).size(), 'AC-4: no duplicate onboarding case');\n    }\n\n    @IsTest\n    static void multipleWonOpportunitiesForSameAccountCreateOneCase() {\n        Account acc = acme();\n        Test.startTest();\n        insert new List<Opportunity>{ newOpp(acc.Id, WON, 1000), newOpp(acc.Id, WON, 250000) };\n        Test.stopTest();\n\n        List<Case> cases = onboardingCases(acc.Id);\n        Assert.areEqual(1, cases.size(), 'AC-4: one case per account per batch');\n        Assert.areEqual('High', cases[0].Priority, 'AC-3/AC-4: highest amount decides priority');\n    }\n\n    @IsTest\n    static void onlyFiresOnTransitionToClosedWon() {\n        Account acc = acme();\n        Opportunity opp = newOpp(acc.Id, WON, 5000);\n        insert opp;\n        delete onboardingCases(acc.Id);\n\n        Test.startTest();\n        opp.Description = 'Edited after closing';\n        update opp;\n        Test.stopTest();\n\n        Assert.areEqual(0, onboardingCases(acc.Id).size(), 'AC-5: editing a won opportunity must not re-fire');\n    }\n\n    @IsTest\n    static void nonWonStageDoesNothing() {\n        Account acc = acme();\n        Test.startTest();\n        insert newOpp(acc.Id, 'Closed Lost', 5000);\n        Test.stopTest();\n\n        Assert.areEqual(0, onboardingCases(acc.Id).size(), 'AC-5: lost deals create no case');\n        Assert.isNull(acme().Customer_Status__c, 'AC-5: lost deals do not activate the account');\n    }\n\n    @IsTest\n    static void bulkLoadOf200OpportunitiesStaysWithinLimits() {\n        List<Account> accounts = new List<Account>();\n        for (Integer i = 0; i < 200; i++) {\n            accounts.add(new Account(Name = 'Bulk ' + i));\n        }\n        insert accounts;\n        List<Opportunity> opps = new List<Opportunity>();\n        for (Account a : accounts) {\n            opps.add(newOpp(a.Id, WON, 1000));\n        }\n\n        Test.startTest();\n        insert opps;\n        Integer queries = Limits.getQueries();\n        Test.stopTest();\n\n        Assert.areEqual(200, [SELECT COUNT() FROM Case WHERE Is_Onboarding__c = true AND Account.Name LIKE 'Bulk %'],\n            'AC-6: one case per account in a 200-record load');\n        Assert.isTrue(queries <= 5, 'AC-6: SOQL usage must not grow with batch size, used ' + queries);\n    }\n\n    @IsTest\n    static void salesUserWithPermissionSetCanCloseDeal() {\n        Profile standard = [SELECT Id FROM Profile WHERE Name = 'Standard User' LIMIT 1];\n        User rep = new User(\n            Alias = 'srep', Email = 'sales.rep@example.com', EmailEncodingKey = 'UTF-8', LastName = 'Rep',\n            LanguageLocaleKey = 'en_US', LocaleSidKey = 'en_US', ProfileId = standard.Id,\n            TimeZoneSidKey = 'Asia/Kolkata', Username = 'sales.rep.' + System.now().getTime() + '@example.com'\n        );\n        insert rep;\n        PermissionSet ps = [SELECT Id FROM PermissionSet WHERE Name = 'Onboarding_Automation' LIMIT 1];\n        insert new PermissionSetAssignment(AssigneeId = rep.Id, PermissionSetId = ps.Id);\n\n        System.runAs(rep) {\n            Account acc = new Account(Name = 'Rep Account');\n            insert acc;\n            Test.startTest();\n            insert newOpp(acc.Id, WON, 5000);\n            Test.stopTest();\n            Assert.areEqual(1, onboardingCases(acc.Id).size(), 'AC-7: permission set grants what the automation needs');\n        }\n    }\n}\n", "force-app/main/default/classes/OnboardingServiceTest.cls-meta.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<ApexClass xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <apiVersion>62.0<\/apiVersion>\n    <status>Active<\/status>\n<\/ApexClass>\n"}, "verdict": null, "findings": [], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 6, "time": "2026-11-23T08:57:15+00:00", "kind": "tool", "tool": "static_analysis", "tool_name": "Static analysis (metadata + PMD Apex)", "passed": false, "summary": "4 violation(s) in 1 file(s)", "output": "Metadata checks: 0 issue(s)\nPMD Apex rules (17 rules): 4 violation(s)\nforce-app/main/default/classes/OnboardingService.cls:16  CognitiveComplexity  The method 'handleClosedWon(List<Opportunity>, Map<Id, Opportunity>)' has a cognitive complexity of 16, current threshold is 15\nforce-app/main/default/classes/OnboardingService.cls:24  OperationWithLimitsInLoop  Avoid operations in loops that may hit governor limits\nforce-app/main/default/classes/OnboardingService.cls:33  OperationWithLimitsInLoop  Avoid operations in loops that may hit governor limits\nforce-app/main/default/classes/OnboardingService.cls:42  OperationWithLimitsInLoop  Avoid operations in loops that may hit governor limits", "violations": [{"file": "force-app/main/default/classes/OnboardingService.cls", "line": 16, "rule": "CognitiveComplexity", "message": "The method 'handleClosedWon(List<Opportunity>, Map<Id, Opportunity>)' has a cognitive complexity of 16, current threshold is 15", "priority": 3, "engine": "pmd"}, {"file": "force-app/main/default/classes/OnboardingService.cls", "line": 24, "rule": "OperationWithLimitsInLoop", "message": "Avoid operations in loops that may hit governor limits", "priority": 3, "engine": "pmd"}, {"file": "force-app/main/default/classes/OnboardingService.cls", "line": 33, "rule": "OperationWithLimitsInLoop", "message": "Avoid operations in loops that may hit governor limits", "priority": 3, "engine": "pmd"}, {"file": "force-app/main/default/classes/OnboardingService.cls", "line": 42, "rule": "OperationWithLimitsInLoop", "message": "Avoid operations in loops that may hit governor limits", "priority": 3, "engine": "pmd"}], "duration_s": 2.35}, {"seq": 7, "time": "2026-11-23T08:57:15+00:00", "kind": "route", "reason": "static_analysis_failed", "to": "developer", "to_name": "Apex Developer Agent", "iteration": 1, "gate": "Static analysis (metadata + PMD Apex)"}, {"seq": 8, "time": "2026-11-23T08:57:15+00:00", "kind": "agent", "agent": "developer", "agent_name": "Apex Developer Agent", "step": "Fix static analysis findings (iteration 1)", "summary": "Fixed the static-analysis findings: OnboardingService ran a SOQL query and two DML statements inside the per-Opportunity loop (OperationWithLimitsInLoop x3), which would exceed governor limits on a 200-record Data Loader batch (200 queries vs the 100 limit), and it took the case priority from whichever deal was processed first instead of the highest amount (AC-4). Rewrote it to the designed bulk pattern: collect one won Opportunity per Account, one Account query with an open-onboarding-case subquery, then one insert and one update. Split helpers to bring cognitive complexity under the threshold.", "files": ["force-app/main/default/classes/OnboardingService.cls"], "file_contents": {"force-app/main/default/classes/OnboardingService.cls": "/**\n * Creates onboarding Cases and activates Accounts when Opportunities become Closed Won.\n * Bulk-safe: one SOQL query and at most two DML statements per transaction,\n * regardless of how many Opportunities are in the trigger batch.\n */\npublic with sharing class OnboardingService {\n    @TestVisible\n    private static final String CASE_ORIGIN = 'Sales Handoff';\n    @TestVisible\n    private static final String ACTIVE_STATUS = 'Active Customer';\n    @TestVisible\n    private static final Decimal HIGH_PRIORITY_AMOUNT = 100000;\n\n    /**\n     * @param newOpps Trigger.new\n     * @param oldMap  Trigger.oldMap (null on insert)\n     */\n    public static void handleClosedWon(List<Opportunity> newOpps, Map<Id, Opportunity> oldMap) {\n        Map<Id, Opportunity> wonByAccount = collectNewlyWon(newOpps, oldMap);\n        if (wonByAccount.isEmpty()) {\n            return;\n        }\n\n        List<Case> casesToInsert = new List<Case>();\n        List<Account> accountsToUpdate = new List<Account>();\n        for (Account acc : [\n            SELECT Id, Name,\n                (SELECT Id FROM Cases WHERE Is_Onboarding__c = true AND IsClosed = false LIMIT 1)\n            FROM Account\n            WHERE Id IN :wonByAccount.keySet()\n            WITH USER_MODE\n        ]) {\n            accountsToUpdate.add(new Account(Id = acc.Id, Customer_Status__c = ACTIVE_STATUS));\n            if (acc.Cases.isEmpty()) {\n                casesToInsert.add(buildCase(acc, wonByAccount.get(acc.Id)));\n            }\n        }\n\n        insert as user casesToInsert;\n        update as user accountsToUpdate;\n    }\n\n    /** One entry per Account: the highest-value Opportunity that just became won. */\n    private static Map<Id, Opportunity> collectNewlyWon(List<Opportunity> newOpps, Map<Id, Opportunity> oldMap) {\n        Map<Id, Opportunity> wonByAccount = new Map<Id, Opportunity>();\n        for (Opportunity opp : newOpps) {\n            Opportunity old = oldMap == null ? null : oldMap.get(opp.Id);\n            Boolean becameWon = opp.IsWon && (old == null || !old.IsWon);\n            if (!becameWon || opp.AccountId == null) {\n                continue;\n            }\n            Opportunity current = wonByAccount.get(opp.AccountId);\n            if (current == null || amountOf(opp) > amountOf(current)) {\n                wonByAccount.put(opp.AccountId, opp);\n            }\n        }\n        return wonByAccount;\n    }\n\n    private static Case buildCase(Account acc, Opportunity opp) {\n        return new Case(\n            AccountId = acc.Id,\n            Subject = 'Onboarding: ' + acc.Name,\n            Origin = CASE_ORIGIN,\n            Priority = amountOf(opp) >= HIGH_PRIORITY_AMOUNT ? 'High' : 'Medium',\n            Is_Onboarding__c = true,\n            Description = 'Created automatically from Closed Won opportunity ' + opp.Name\n        );\n    }\n\n    private static Decimal amountOf(Opportunity opp) {\n        return opp.Amount == null ? 0 : opp.Amount;\n    }\n}\n"}, "verdict": null, "findings": [], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 9, "time": "2026-11-23T08:57:18+00:00", "kind": "tool", "tool": "static_analysis", "tool_name": "Static analysis (metadata + PMD Apex)", "passed": true, "summary": "No violations", "output": "Metadata checks: 0 issue(s)\nPMD Apex rules (17 rules): 0 violation(s)", "violations": [], "duration_s": 2.37}, {"seq": 10, "time": "2026-11-23T08:57:18+00:00", "kind": "tool", "tool": "org_validation", "tool_name": "Org validation (deploy + Apex tests)", "skipped": true, "passed": null, "summary": "Skipped: no Salesforce org connected (set SF_TARGET_ORG to enable)", "output": "Set SF_TARGET_ORG to a sandbox or scratch-org alias authenticated with the sf CLI.\nThe gate then runs: sf project deploy validate --test-level RunSpecifiedTests --tests OnboardingServiceTest and enforces >= 75% coverage.", "duration_s": 0.0}, {"seq": 11, "time": "2026-11-23T08:57:18+00:00", "kind": "agent", "agent": "reviewer", "agent_name": "Code Review Agent", "step": "Code review", "summary": "Clean trigger-handler-service structure that follows the team standards and the design: logic-free trigger, one SOQL and two DML per transaction, user-mode data access and tests per acceptance criterion including bulk and run-as cases. Static analysis is clean after one fix iteration. No blocking issues; one medium configuration item and two low suggestions.", "files": [], "file_contents": {}, "verdict": "APPROVE", "findings": [{"severity": "medium", "text": "\"Sales Handoff\" must exist as a value in the Case Origin picklist (StandardValueSet CaseOrigin), otherwise reports and list views will not show it as a proper value. Add it before deployment or include the StandardValueSet in the package."}, {"severity": "low", "text": "Add a bypass switch (e.g. a custom permission checked in OpportunityTriggerHandler) so data migrations can load historical Closed Won deals without creating onboarding cases."}, {"severity": "low", "text": "Consider moving the 100,000 threshold to custom metadata so Sales Ops can change it without a deployment."}], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 12, "time": "2026-11-23T08:57:18+00:00", "kind": "agent", "agent": "security", "agent_name": "Security Agent", "step": "Security review", "summary": "Sharing is enforced on every class, all SOQL runs WITH USER_MODE and all DML runs as user, there is no dynamic SOQL and no hardcoded Ids, and access is granted through a narrow permission set rather than profiles. Two medium items concern permission-set scope and silent skips; nothing blocks release.", "files": [], "file_contents": {}, "verdict": "PASS", "findings": [{"severity": "medium", "text": "The permission set gives reps edit access to Account.Customer_Status__c, so they can also change it by hand. If status must be system-controlled, make the field read-only for reps and perform only that update in a narrowly scoped system-mode helper."}, {"severity": "medium", "text": "With user-mode queries, an Opportunity whose Account the rep cannot see is skipped silently. Log these cases (e.g. a platform event or an error log record) so onboarding is never missed without a trace."}, {"severity": "low", "text": "The Case Description includes the Opportunity name; confirm deal names never contain information the onboarding team should not see."}], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}, {"seq": 13, "time": "2026-11-23T08:57:18+00:00", "kind": "human_gate", "approved": true, "approver": "Salesforce Delivery Lead", "comment": "Auto-approved (demo mode)"}, {"seq": 14, "time": "2026-11-23T08:57:18+00:00", "kind": "agent", "agent": "release", "agent_name": "Salesforce DevOps Agent", "step": "Prepare manifest, CI/CD pipeline & release notes", "summary": "Produced manifest/package.xml for all seven components, a GitHub Actions pipeline that runs the same PMD ruleset, validates the deployment with OnboardingServiceTest on pull requests and deploys on main using JWT authentication, and release notes with quality-gate results, pre/post-deployment steps and the approval record. Org validation did not run in this run, so the notes make it a required pre-deployment step.", "files": [".github/workflows/salesforce-ci.yml", "RELEASE_NOTES.md", "manifest/package.xml"], "file_contents": {"manifest/package.xml": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<Package xmlns=\"http://soap.sforce.com/2006/04/metadata\">\n    <types>\n        <members>OnboardingService<\/members>\n        <members>OnboardingServiceTest<\/members>\n        <members>OpportunityTriggerHandler<\/members>\n        <name>ApexClass<\/name>\n    <\/types>\n    <types>\n        <members>OpportunityTrigger<\/members>\n        <name>ApexTrigger<\/name>\n    <\/types>\n    <types>\n        <members>Account.Customer_Status__c<\/members>\n        <members>Case.Is_Onboarding__c<\/members>\n        <name>CustomField<\/name>\n    <\/types>\n    <types>\n        <members>Onboarding_Automation<\/members>\n        <name>PermissionSet<\/name>\n    <\/types>\n    <version>62.0<\/version>\n<\/Package>\n", ".github/workflows/salesforce-ci.yml": "name: salesforce-ci\n\non:\n  pull_request:\n    paths: [\"force-app/**\", \"config/**\"]\n  push:\n    branches: [main]\n    paths: [\"force-app/**\", \"config/**\"]\n\nenv:\n  TESTS: OnboardingServiceTest\n\njobs:\n  static-analysis:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-java@v4\n        with:\n          distribution: temurin\n          java-version: \"21\"\n      - name: Install PMD\n        run: |\n          curl -sSL -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.8.0/pmd-dist-7.8.0-bin.zip\n          unzip -q pmd.zip\n      - name: PMD Apex rules (same ruleset as the agent gate)\n        run: pmd-bin-7.8.0/bin/pmd check -d force-app -R config/pmd-ruleset.xml -f text --no-progress\n\n  validate:\n    if: github.event_name == 'pull_request'\n    needs: static-analysis\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: \"20\"\n      - run: npm install --global @salesforce/cli\n      - name: Authenticate to target org (JWT)\n        run: |\n          echo \"${{ secrets.SF_JWT_KEY }}\" > server.key\n          sf org login jwt --client-id \"${{ secrets.SF_CONSUMER_KEY }}\" --jwt-key-file server.key \\\n            --username \"${{ secrets.SF_USERNAME }}\" --instance-url \"${{ secrets.SF_INSTANCE_URL }}\" --alias target\n      - name: Validate deployment and run Apex tests\n        run: sf project deploy validate --source-dir force-app --target-org target --test-level RunSpecifiedTests --tests \"$TESTS\" --wait 30\n\n  deploy:\n    if: github.event_name == 'push'\n    needs: static-analysis\n    runs-on: ubuntu-latest\n    environment: production\n    steps:\n      - uses: actions/checkout@v4\n      - uses: actions/setup-node@v4\n        with:\n          node-version: \"20\"\n      - run: npm install --global @salesforce/cli\n      - name: Authenticate to target org (JWT)\n        run: |\n          echo \"${{ secrets.SF_JWT_KEY }}\" > server.key\n          sf org login jwt --client-id \"${{ secrets.SF_CONSUMER_KEY }}\" --jwt-key-file server.key \\\n            --username \"${{ secrets.SF_USERNAME }}\" --instance-url \"${{ secrets.SF_INSTANCE_URL }}\" --alias target\n      - name: Deploy with Apex tests\n        run: sf project deploy start --source-dir force-app --target-org target --test-level RunSpecifiedTests --tests \"$TESTS\" --wait 30\n", "RELEASE_NOTES.md": "# Release notes: Closed Won \u2192 onboarding handoff\n\n## Components\n| Type | Name |\n|------|------|\n| CustomField | Account.Customer_Status__c, Case.Is_Onboarding__c |\n| PermissionSet | Onboarding_Automation |\n| ApexTrigger | OpportunityTrigger |\n| ApexClass | OpportunityTriggerHandler, OnboardingService, OnboardingServiceTest |\n\n## Acceptance criteria\nAC-1 to AC-7 are each covered by at least one method in OnboardingServiceTest (9 test methods).\n\n## Quality gates\n| Gate | Result |\n|------|--------|\n| Metadata checks | Clean |\n| PMD Apex rules | Clean after 1 automated fix iteration (SOQL/DML in loop, cognitive complexity) |\n| Org validation + Apex tests | Not run in this run (no org connected); the CI pipeline runs it on every pull request |\n| Code review agent | APPROVE (1 medium, 2 low) |\n| Security agent | PASS (2 medium, 1 low) |\n| Human approval | Approved by Salesforce Delivery Lead (timestamp in trace.json) |\n\n## Before deployment\n1. Add \"Sales Handoff\" to the Case Origin picklist (review finding).\n2. Run `sf project deploy validate` with OnboardingServiceTest against the target sandbox and confirm coverage.\n\n## After deployment\n1. Assign the Onboarding_Automation permission set to the sales rep users or permission set group.\n2. Add Customer Status to the Account page layout / Lightning record page.\n\n## Follow-ups (backlog)\n1. Trigger bypass custom permission for data migrations (review, low).\n2. Threshold in custom metadata (review, low).\n3. Decide whether Customer Status should be read-only for reps (security, medium).\n4. Log skipped opportunities when the Account is not visible (security, medium).\n"}, "verdict": null, "findings": [], "duration_s": 0.0, "input_tokens": null, "output_tokens": null}], "mode": "replay", "story": "Request from the Head of Sales Operations (Salesforce Sales Cloud):\n\nWhen a sales rep marks an Opportunity as Closed Won, the onboarding team has to be told by email today,\nand customers wait days. Automate the handoff in Salesforce:\n\n- Create an onboarding Case on the customer's Account (subject \"Onboarding: <Account name>\", origin \"Sales Handoff\").\n- Priority High when the deal amount is 100,000 or more, otherwise Medium.\n- Do not create a second onboarding case if the Account already has an open one; one case per Account even if\n  several of its deals close at the same time.\n- Mark the Account's customer status as \"Active Customer\".\n- Only when a deal becomes Closed Won, not on every later edit. Closed Lost deals do nothing.\n- Sales Ops bulk-closes up to 200 opportunities at a time with Data Loader, so it must work for bulk updates.\n- Sales reps run on the Standard User profile; give them only the access the automation needs.\n", "target_org": null, "status": "released", "finished": "2026-11-23T08:57:18+00:00"}</script>
+<script>
+const T = JSON.parse(document.getElementById('trace').textContent);
+const EV = T.events;
+const NODES = [
+  {id:'requirements', ic:'BA', nm:'Salesforce BA Agent', rl:'Story, ACs, objects & access'},
+  {id:'architect', ic:'AR', nm:'Solution Architect Agent', rl:'Clicks vs code, data model'},
+  {id:'developer', ic:'DV', nm:'Apex Developer Agent', rl:'Apex, trigger & metadata', para:true},
+  {id:'tester', ic:'TS', nm:'Apex Test Agent', rl:'Test class from ACs', para:true},
+  {id:'static_analysis', ic:'SA', nm:'Static analysis', rl:'Metadata checks + PMD Apex'},
+  {id:'org_validation', ic:'OV', nm:'Org validation', rl:'Deploy validate + Apex tests'},
+  {id:'reviewer', ic:'CR', nm:'Code Review Agent', rl:'Salesforce best practices', para:true},
+  {id:'security', ic:'SC', nm:'Security Agent', rl:'CRUD/FLS, sharing, injection', para:true},
+  {id:'human_gate', ic:'HU', nm:'Human approval', rl:'Delivery lead signs off'},
+  {id:'release', ic:'RL', nm:'Salesforce DevOps Agent', rl:'Manifest, CI/CD, release notes'},
+];
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nodeOf = e => e.kind==='agent' ? e.agent : e.kind==='tool' ? e.tool : e.kind==='human_gate' ? 'human_gate' : e.kind==='route' ? (e.to||'developer') : null;
+
+let pos = 0;            // number of events revealed
+let selected = 0;       // index into EV (or -1 for story)
+let timer = null;
+
+// ---------- file history (for diffs) ----------
+function fileBefore(idx, path){
+  for(let i=idx-1;i>=0;i--){const e=EV[i]; if(e.file_contents && path in e.file_contents) return e.file_contents[path];}
+  return null;
+}
+
+// ---------- rendering helpers ----------
+const KW = /\b(public|private|protected|global|static|final|class|trigger|on|void|for|if|else|return|new|insert|update|delete|upsert|with|without|sharing|as|user|null|true|false|try|catch|throw|this|private|override|virtual|abstract|SELECT|FROM|WHERE|AND|OR|IN|LIMIT|WITH|USER_MODE|continue|break|Boolean|Integer|Decimal|String|Id|List|Map|Set|Date)\b/g;
+function hl(line, path){
+  if(!/\.(cls|trigger)$/.test(path)) return esc(line);
+  if(/^\s*(\/\*\*|\*|\/\/)/.test(line)) return `<span class="c">${esc(line)}</span>`;
+  const out=[]; let rest=line; const re=/(\/\/.*$)|('(?:[^'\\]|\\.)*')|(@\w+)/; let m;
+  while((m=re.exec(rest))){
+    out.push(esc(rest.slice(0,m.index)).replace(KW,'<span class="k">$1</span>'));
+    out.push(m[1]?`<span class="c">${esc(m[1])}</span>`:m[2]?`<span class="s">${esc(m[2])}</span>`:`<span class="fn">${esc(m[3])}</span>`);
+    rest=rest.slice(m.index+m[0].length);
+  }
+  out.push(esc(rest).replace(KW,'<span class="k">$1</span>'));
+  return out.join('');
+}
+function diffLines(a,b){ // LCS line diff
+  const A=a.split('\n'),B=b.split('\n'),n=A.length,m=B.length;
+  const L=Array.from({length:n+1},()=>new Int32Array(m+1));
+  for(let i=n-1;i>=0;i--)for(let j=m-1;j>=0;j--)L[i][j]=A[i]===B[j]?L[i+1][j+1]+1:Math.max(L[i+1][j],L[i][j+1]);
+  const r=[];let i=0,j=0;
+  while(i<n&&j<m){if(A[i]===B[j]){r.push([' ',B[j],j+1]);i++;j++}else if(L[i+1][j]>=L[i][j+1]){r.push(['-',A[i],'']);i++}else{r.push(['+',B[j],j+1]);j++}}
+  while(i<n)r.push(['-',A[i++],'']);while(j<m){r.push(['+',B[j],j+1]);j++}
+  return r;
+}
+function codeView(path, content, prev){
+  let rows;
+  if(prev!=null && prev!==content){
+    const d=diffLines(prev.replace(/\n$/,''),content.replace(/\n$/,'')), keep=d.map(()=>false);
+    d.forEach(([t],i)=>{if(t!==' ')for(let k=Math.max(0,i-4);k<=Math.min(d.length-1,i+4);k++)keep[k]=true});
+    rows=[];let skipped=0;
+    d.forEach(([t,l,n],i)=>{
+      if(!keep[i]){skipped++;return}
+      if(skipped){rows.push(`<tr class="gap"><td class="n">⋯</td><td>${skipped} unchanged lines</td></tr>`);skipped=0}
+      rows.push(`<tr class="${t==='+'?'add':t==='-'?'del':''}"><td class="n">${t==='-'?'−':n}</td><td>${hl(l,path)}</td></tr>`);
+    });
+    if(skipped) rows.push(`<tr class="gap"><td class="n">⋯</td><td>${skipped} unchanged lines</td></tr>`);
+  } else {
+    rows=content.replace(/\n$/,'').split('\n').map((l,i)=>`<tr><td class="n">${i+1}</td><td>${hl(l,path)}</td></tr>`);
+  }
+  return `<div class="code"><table>${rows.join('')}</table></div>`;
+}
+function md(src){ // tiny markdown renderer for agent docs
+  const lines=src.split('\n');let h='',inCode=false,inList=false,tbl=[];
+  const inline=s=>esc(s).replace(/`([^`]+)`/g,'<code>$1</code>').replace(/\*\*([^*]+)\*\*/g,'<b>$1</b>');
+  const flushT=()=>{if(!tbl.length)return;const rows=tbl.filter(r=>!/^\|\s*-/.test(r)).map(r=>r.replace(/^\||\|$/g,'').split('|'));
+    h+='<table>'+rows.map((r,i)=>'<tr>'+r.map(c=>i?`<td>${inline(c.trim())}</td>`:`<th>${inline(c.trim())}</th>`).join('')+'</tr>').join('')+'</table>';tbl=[]};
+  const flushL=()=>{if(inList){h+='</ul>';inList=false}};
+  for(const l of lines){
+    if(l.startsWith('```')){flushT();flushL();h+=inCode?'</pre>':'<pre>';inCode=!inCode;continue}
+    if(inCode){h+=esc(l)+'\n';continue}
+    if(l.startsWith('|')){flushL();tbl.push(l);continue} else flushT();
+    if(/^#{1,3} /.test(l)){flushL();const n=l.match(/^#+/)[0].length;h+=`<h${n}>${inline(l.slice(n+1))}</h${n}>`;continue}
+    if(/^(\d+\.|-) /.test(l)){if(!inList){h+='<ul>';inList=true}h+=`<li>${inline(l.replace(/^(\d+\.|-) /,''))}</li>`;continue}
+    flushL(); if(l.trim()) h+=`<p style="margin:4px 0">${inline(l)}</p>`;
+  }
+  flushT();flushL();return h;
+}
+function pytestOut(s){
+  return esc(s).split('\n').map(l=>/FAILED|Error|failed|\.(cls|trigger):\d+/.test(l)?`<span class="f">${l}</span>`:/passed/.test(l)&&!/failed/.test(l)?`<span class="p">${l}</span>`:l).join('\n');
+}
+const sevPill = s => `<span class="pill ${s==='high'?'bad':s==='medium'?'warn':'info'}">${esc(s)}</span>`;
+const verdictPill = v => v ? `<span class="pill ${/APPROVE|PASS/.test(v)?'ok':'bad'}">${esc(v.replace('_',' '))}</span>` : '';
+const time = t => (t||'').slice(11,19);
+
+// ---------- detail panel ----------
+let fileTab = {};
+function renderDetail(){
+  const D=document.getElementById('detail'), H=document.getElementById('detailHead'), M=document.getElementById('detailMeta');
+  if(selected<0 || pos===0){
+    H.textContent='Business request'; M.textContent='Input from the product owner';
+    D.innerHTML=`<pre class="story anim">${esc(T.story.trim())}</pre>
+      <div class="callout sec">Press <b>Play run</b> to watch the orchestrator turn this request into Salesforce metadata, Apex and tests that pass the quality gates, review and approval, step by step.</div>`;
+    return;
+  }
+  const e=EV[selected]; let h='';
+  M.textContent=`Event ${e.seq} · ${time(e.time)} UTC`;
+  if(e.kind==='plan'){
+    H.textContent='Orchestrator · plan';
+    const label={requirements:'BA',architect:'Architect',developer:'Apex Developer',tester:'Apex Test',static_analysis:'Static analysis',org_validation:'Org validation',reviewer:'Review',security:'Security',human_gate:'Human gate',release:'DevOps'};
+    h=`<div class="detail-title"><h3>Task graph created</h3><span class="pill info">Orchestrator</span></div>
+      <p class="summary">The orchestrator breaks the request into a dependency graph. Independent steps run in parallel, and every quality gate sends failures back to the agent that owns the failing files.</p>
+      <div class="flow"><span class="box">BA</span><span class="arr">→</span><span class="box">Architect</span><span class="arr">→</span><span class="box">Apex Developer ∥ Apex Test</span><span class="arr">→</span><span class="box">Static analysis</span><span class="arr">→</span><span class="box">Org validation</span><span class="arr">↺</span><span class="arr">→</span><span class="box">Review ∥ Security</span><span class="arr">→</span><span class="box">Human gate</span><span class="arr">→</span><span class="box">DevOps</span></div>
+      <div class="sec"><h4>Dependencies</h4>${e.graph.map(g=>`<div class="meta mono">${label[g.id]} ← ${g.after.length?g.after.map(x=>label[x]).join(', '):'(start)'}</div>`).join('')}</div>`;
+  } else if(e.kind==='agent'){
+    H.textContent=e.agent_name;
+    h=`<div class="detail-title"><h3>${esc(e.step)}</h3>${verdictPill(e.verdict)}</div><p class="summary">${esc(e.summary)}</p>`;
+    if(e.findings&&e.findings.length) h+=`<div class="sec"><h4>Findings</h4>${e.findings.map(f=>`<div class="finding">${sevPill(f.severity)}<div>${esc(f.text)}</div></div>`).join('')}</div>`;
+    const files=e.files||[];
+    if(files.length){
+      const main = files.filter(f=>!/-meta\.xml$/.test(f)).sort((x,y)=>e.file_contents[y].length-e.file_contents[x].length)[0] || files[files.length-1];
+      const cur = fileTab[selected] && files.includes(fileTab[selected]) ? fileTab[selected] : main;
+      const prev = fileBefore(selected,cur);
+      const content = e.file_contents[cur];
+      const isDiff = prev!=null && prev!==content;
+      h+=`<div class="sec"><h4>Files written${isDiff?' · showing changes from the previous version':''}</h4>
+        <div class="tabs">${files.map(f=>`<button class="tab ${f===cur?'on':''}" data-f="${esc(f)}">${esc(f)}</button>`).join('')}</div>
+        ${/\.md$/.test(cur)&&!isDiff?`<div class="md">${md(content)}</div>`:codeView(cur,content,prev)}</div>`;
+    }
+  } else if(e.kind==='tool'){
+    H.textContent=e.tool_name||e.tool;
+    const state = e.skipped?['SKIPPED','warn']:e.passed?['PASSED','ok']:['FAILED','bad'];
+    const msg = e.skipped ? 'No Salesforce org is connected in this run, so the orchestrator records the gate as skipped and keeps going. With an org connected (SF_TARGET_ORG), it validates the deployment and runs the Apex tests, and sends any failure or low coverage back to the right agent.'
+      : e.tool==='static_analysis' ? (e.passed ? 'Metadata checks and PMD Apex rules are clean. The change moves on to org validation.'
+        : 'The gate found governor-limit risks before any human reviewed the code: SOQL and DML inside a loop would fail on a 200-record Data Loader batch. The orchestrator sends the findings to the agent that owns the file.')
+      : (e.passed ? 'Deployment validated and Apex tests passed with sufficient coverage.' : 'Org validation failed; the orchestrator routes the failures back.');
+    h=`<div class="detail-title"><h3>${esc(e.summary)}</h3><span class="pill ${state[1]}">${state[0]}</span></div><p class="summary">${msg}</p>`;
+    if(e.violations && e.violations.length) h+=`<div class="sec"><h4>Violations</h4><table class="vt"><tr><th>File</th><th>Line</th><th>Rule</th><th>Message</th></tr>${e.violations.map(v=>`<tr><td class="mono">${esc(v.file.split('/').pop())}</td><td class="mono">${v.line??'–'}</td><td><span class="pill ${/Loop|CRUD|Sharing|SOQLInjection/.test(v.rule)?'bad':'warn'}">${esc(v.rule)}</span></td><td>${esc(v.message)}</td></tr>`).join('')}</table></div>`;
+    h+=`<div class="sec"><h4>${e.skipped?'Gate configuration':'Tool output (executed for real)'}</h4><pre class="out">${pytestOut(e.output)}</pre></div>`;
+  } else if(e.kind==='route'){
+    H.textContent='Orchestrator · feedback loop';
+    h=`<div class="detail-title"><h3>${esc(e.gate)} findings routed to the ${esc(e.to_name||'Developer Agent')}</h3><span class="pill warn">Iteration ${e.iteration}</span></div>
+      <p class="summary">The orchestrator looks at which files failed and sends the findings to the agent that owns them (the Apex Developer for production code, the Apex Test agent for test classes), along with the requirements, the design and the current source. The loop is capped (default 3 iterations) and escalates to a human if it can't converge.</p>`;
+  } else if(e.kind==='human_gate'){
+    H.textContent='Human approval gate';
+    h=`<div class="detail-title"><h3>Release ${e.approved?'approved':'rejected'}</h3><span class="pill ${e.approved?'ok':'bad'}">${e.approved?'APPROVED':'REJECTED'}</span></div>
+      <p class="summary">Before release, the orchestrator stops and presents test results, review and security verdicts and every finding to an accountable person. Nothing ships without this decision, and it is logged in the audit trail.</p>
+      <div class="sec"><h4>Decision record</h4><div class="finding"><div><b>${esc(e.approver)}</b> · ${esc(e.time)}<br><span class="meta">${esc(e.comment||'')}</span></div></div></div>`;
+  } else if(e.kind==='escalate'){
+    H.textContent='Escalated to a human'; h=`<p class="summary">${esc(e.reason)}</p>`;
+  }
+  D.innerHTML=`<div class="anim">${h}</div>`;
+  D.querySelectorAll('.tab').forEach(b=>b.onclick=()=>{fileTab[selected]=b.dataset.f;renderDetail()});
+}
+
+// ---------- pipeline, KPIs, log ----------
+function renderPipe(){
+  const st={}; const seen=EV.slice(0,pos);
+  for(const e of seen){
+    const n=nodeOf(e); if(!n) continue;
+    if(e.kind==='tool') st[n]=e.skipped?'skip':e.passed?'done':'fail';
+    else if(e.kind==='route') st[n]='active';
+    else st[n]='done';
+  }
+  const cur = pos>0 ? nodeOf(EV[pos-1]) : null;
+  const selNode = selected>=0 && pos>0 ? nodeOf(EV[selected]) : null;
+  const loops = seen.filter(e=>e.kind==='route').length;
+  document.getElementById('pipe').innerHTML=NODES.map(n=>{
+    let cls=st[n.id]||''; if(n.id===cur && pos<EV.length && cls!=='fail' && cls!=='skip') cls='active';
+    const label = cls==='done'?'done':cls==='fail'?'failed':cls==='skip'?'skipped':cls==='active'?'working':'';
+    const extra = n.id==='developer'&&loops?` · ${loops} fix`:'';
+    return `<li class="node ${cls} ${n.para?'para':''} ${n.id===selNode?'sel':''}" data-n="${n.id}"><div class="ic">${cls==='done'?'✓':n.ic}</div><div><div class="nm">${n.nm}</div><div class="rl">${n.rl}</div></div><div class="st">${label}${extra}</div></li>`;
+  }).join('');
+  document.querySelectorAll('.node').forEach(li=>li.onclick=()=>{
+    for(let i=pos-1;i>=0;i--) if(nodeOf(EV[i])===li.dataset.n){selected=i;render();return;}
+  });
+}
+function renderKpis(){
+  const seen=EV.slice(0,pos), agents=seen.filter(e=>e.kind==='agent');
+  const files=new Set(); agents.forEach(e=>(e.files||[]).forEach(f=>files.add(f)));
+  const sa=seen.filter(e=>e.kind==='tool'&&e.tool==='static_analysis'), last=sa[sa.length-1];
+  document.getElementById('kAgents').textContent=agents.length;
+  document.getElementById('kFiles').textContent=files.size;
+  const kt=document.getElementById('kTests');
+  kt.textContent = last ? (last.passed?'Clean':`${last.violations.length} issues`) : '–';
+  kt.style.color = last ? (last.passed?'var(--green)':'var(--red)') : '';
+  document.getElementById('kLoops').textContent=seen.filter(e=>e.kind==='route').length;
+  document.getElementById('kFind').textContent=agents.reduce((a,e)=>a+(e.findings||[]).length,0);
+  const ks=document.getElementById('kStatus');
+  ks.textContent = pos===0?'Not started': pos<EV.length?'Running…': (T.status||'').toUpperCase();
+  ks.style.color = pos===EV.length && T.status==='released' ? 'var(--green)' : pos>0 ? 'var(--orange)' : '';
+  document.getElementById('prog').style.width=(pos/EV.length*100)+'%';
+  document.getElementById('counter').textContent=`Step ${pos} / ${EV.length}`;
+}
+function outcome(e){
+  if(e.kind==='plan') return `${e.graph.length} tasks planned`;
+  if(e.kind==='agent') return e.verdict ? `${e.verdict.replace('_',' ')} · ${(e.findings||[]).length} findings` : `${(e.files||[]).length} file(s): ${(e.files||[]).filter(f=>!/-meta\.xml$/.test(f)).map(f=>f.split('/').pop()).join(', ')}`;
+  if(e.kind==='tool') return e.summary;
+  if(e.kind==='route') return `Routed to ${e.to_name||'Developer'} (iteration ${e.iteration})`;
+  if(e.kind==='human_gate') return `${e.approved?'Approved':'Rejected'} by ${e.approver}`;
+  return e.reason||'';
+}
+function actor(e){return e.kind==='agent'?e.agent_name:e.kind==='tool'?'Gate · '+(e.tool_name||e.tool).split(' (')[0]:e.kind==='human_gate'?'Human · '+e.approver:'Orchestrator'}
+function action(e){return e.kind==='agent'?e.step:e.kind==='plan'?'Build task graph':e.kind==='tool'?(e.tool==='static_analysis'?'Metadata checks + PMD Apex rules':'sf project deploy validate + Apex tests'):e.kind==='route'?'Feedback loop':e.kind==='human_gate'?'Release approval':e.kind}
+function renderLog(){
+  document.getElementById('logBody').innerHTML=EV.map((e,i)=>`<tr data-i="${i}" class="${i>=pos?'future':''} ${i===selected?'cur':''}"><td class="mono">${e.seq}</td><td class="mono">${time(e.time)}</td><td>${esc(actor(e))}</td><td>${esc(action(e))}</td><td>${esc(outcome(e))}</td></tr>`).join('');
+  document.querySelectorAll('#logBody tr').forEach(tr=>tr.onclick=()=>{selected=+tr.dataset.i;render();document.querySelector('.grid').scrollIntoView({behavior:'smooth',block:'start'})});
+}
+function render(){renderPipe();renderKpis();renderLog();renderDetail();
+  document.getElementById('stepBtn').disabled=pos>=EV.length; document.getElementById('allBtn').disabled=pos>=EV.length;}
+
+// ---------- playback ----------
+function step(){ if(pos<EV.length){pos++;selected=pos-1;render();} if(pos>=EV.length) stop(); }
+function stop(){clearInterval(timer);timer=null;document.getElementById('playBtn').textContent=pos>=EV.length?'▶ Replay':'▶ Play run';}
+document.getElementById('playBtn').onclick=()=>{
+  if(timer){stop();return}
+  if(pos>=EV.length){pos=0;selected=-1;fileTab={};}
+  step(); timer=setInterval(step,+document.getElementById('speed').value);
+  document.getElementById('playBtn').textContent='⏸ Pause';
+};
+document.getElementById('stepBtn').onclick=()=>{stop();step()};
+document.getElementById('allBtn').onclick=()=>{stop();pos=EV.length;selected=EV.length-1;render();stop()};
+document.getElementById('resetBtn').onclick=()=>{stop();pos=0;selected=-1;fileTab={};render()};
+document.getElementById('speed').onchange=()=>{if(timer){clearInterval(timer);timer=setInterval(step,+document.getElementById('speed').value)}};
+
+document.getElementById('runId').textContent=T.run_id;
+document.getElementById('modeBadge').innerHTML = T.mode==='live'
+  ? `<span class="dot" style="background:var(--green)"></span>Live run · model <b>${esc(T.model)}</b>`
+  : `<span class="dot" style="background:var(--blue)"></span><b>Recorded run</b> · quality gates executed for real`;
+document.getElementById('foot').innerHTML = T.mode==='live'
+  ? `Live run on ${esc(T.started)} with ${esc(T.model)}.`
+  : `This page replays a recorded run of the Salesforce POC. Agent responses were recorded and replayed through the real orchestrator; the metadata checks and PMD Apex analysis ran for real at each step. The first-build governor-limit defect was included in the recording to demonstrate the feedback loop. No Salesforce org was connected, so org validation (deploy + Apex tests) shows as skipped. Run the POC with an Anthropic API key and SF_TARGET_ORG set to produce a fully live trace.`;
+selected=-1; render();
+</script>
+</body>
+</html>

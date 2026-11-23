@@ -1,0 +1,198 @@
+{
+  "name": "agentic-sdlc-salesforce",
+  "displayName": "Agentic SDLC for Salesforce",
+  "description": "Multi-agent orchestration in VS Code: Claude-powered BA, architect, Apex developer, tester, reviewer, security and DevOps agents turn a business request into verified Salesforce source, with PMD and org-validation gates and a human approval step.",
+  "version": "0.1.0",
+  "publisher": "zenlabs",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "icon": "media/icon.png",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "AI",
+    "Programming Languages",
+    "Linters",
+    "Other"
+  ],
+  "keywords": [
+    "salesforce",
+    "apex",
+    "sfdx",
+    "ai agents",
+    "multi-agent",
+    "claude",
+    "sdlc",
+    "pmd"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "workspaceContains:sfdx-project.json"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "agenticSdlc.runStory",
+        "title": "Run on a business request\u2026",
+        "category": "Agentic SDLC",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "agenticSdlc.runFile",
+        "title": "Run on this file",
+        "category": "Agentic SDLC",
+        "icon": "$(rocket)"
+      },
+      {
+        "command": "agenticSdlc.runSelection",
+        "title": "Run on selected text",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.runDemo",
+        "title": "Run demo (recorded, no API key needed)",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.showPanel",
+        "title": "Show run panel",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.openRun",
+        "title": "Open a previous run\u2026",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.exportDemo",
+        "title": "Export client demo page from a run\u2026",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.cancel",
+        "title": "Cancel current run",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.setApiKey",
+        "title": "Set Anthropic API key",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.clearApiKey",
+        "title": "Remove Anthropic API key",
+        "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.installDependencies",
+        "title": "Install engine dependencies",
+        "category": "Agentic SDLC"
+      }
+    ],
+    "menus": {
+      "explorer/context": [
+        {
+          "command": "agenticSdlc.runFile",
+          "when": "resourceExtname =~ /\\.(md|txt)$/",
+          "group": "navigation@90"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "agenticSdlc.runSelection",
+          "when": "editorHasSelection",
+          "group": "navigation@90"
+        }
+      ],
+      "editor/title": [
+        {
+          "command": "agenticSdlc.runFile",
+          "when": "resourceExtname =~ /\\.(md|txt)$/",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "agenticSdlc.runFile",
+          "when": "resourceExtname =~ /\\.(md|txt)$/"
+        },
+        {
+          "command": "agenticSdlc.runSelection",
+          "when": "editorHasSelection"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Agentic SDLC",
+      "properties": {
+        "agenticSdlc.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-5",
+          "description": "Claude model id used by the agents."
+        },
+        "agenticSdlc.targetOrg": {
+          "type": "string",
+          "default": "",
+          "description": "sf CLI alias of a sandbox or scratch org. When set, the org-validation gate runs `sf project deploy validate` with the generated Apex tests. Never use production."
+        },
+        "agenticSdlc.minCoverage": {
+          "type": "number",
+          "default": 75,
+          "minimum": 75,
+          "maximum": 100,
+          "description": "Minimum Apex code coverage (%) for the org-validation gate."
+        },
+        "agenticSdlc.maxFixIterations": {
+          "type": "number",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 6,
+          "description": "How many times a failing gate is routed back to an agent before escalating to you."
+        },
+        "agenticSdlc.pmdPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the PMD 7 launcher (pmd / pmd.bat) if it is not on PATH."
+        },
+        "agenticSdlc.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python 3.11+ interpreter. Empty = auto-detect (python3 / python / py)."
+        },
+        "agenticSdlc.createGitBranch": {
+          "type": "boolean",
+          "default": true,
+          "description": "Create a new git branch (agentic/<request>-<time>) before each live run so changes are easy to review and discard."
+        },
+        "agenticSdlc.approverName": {
+          "type": "string",
+          "default": "",
+          "description": "Name recorded in the audit trail when you approve or reject. Empty = OS user name."
+        },
+        "agenticSdlc.recordRuns": {
+          "type": "boolean",
+          "default": false,
+          "description": "Save each live run's agent responses to .agentic-sdlc/recordings for offline replay demos."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "sync-engine": "node scripts/sync-engine.js",
+    "compile": "tsc -p ./",
+    "vscode:prepublish": "npm run sync-engine && npm run compile",
+    "test": "npm run sync-engine && npm run compile && node test/runner.test.js && node test/extension.smoke.js",
+    "test:webview": "node test/webview.test.js",
+    "package": "vsce package --allow-missing-repository"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gauravshukla1507/SDLC-AGENT.git"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.43",
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^4.1.1",
+    "typescript": "^5.9.3"
+  }
+}

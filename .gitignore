@@ -1,0 +1,24 @@
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+runs/
+
+# Node / extension build
+node_modules/
+vscode-extension/out/
+vscode-extension/engine/
+*.vsix
+vscode-extension/test/*.png
+vscode-extension/test/last-events.json
+
+# Agent run artifacts and secrets
+.agentic-sdlc/
+.env
+*.key
+server.key
+
+# OS / editors
+.DS_Store
+.idea/
