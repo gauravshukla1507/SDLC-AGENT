@@ -3,21 +3,19 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .venv/
-runs/
 
 # Node / extension build
 node_modules/
 vscode-extension/out/
-vscode-extension/engine/
+vscode-extension/orchestrator/
 *.vsix
 vscode-extension/test/*.png
-vscode-extension/test/last-events.json
+vscode-extension/test/last-trace.json
 
-# Agent run artifacts and secrets
+# Agent run state and secrets
 .agentic-sdlc/
 .env
 *.key
-server.key
 
 # OS / editors
 .DS_Store

@@ -127,7 +127,7 @@ button.no{background:transparent;border-color:var(--red);color:var(--red)}
 <div class="wrap">
   <header>
     <div>
-      <div class="kicker">Agentic SDLC · Salesforce</div>
+      <div class="kicker">Agentic SDLC · AI delivery company</div>
       <h1 id="title">Waiting for a run…</h1>
       <p id="subtitle">Start a run with <b>Agentic SDLC: Run on a business request</b> from the Command Palette, or try <b>Agentic SDLC: Run demo</b>.</p>
     </div>
@@ -154,7 +154,7 @@ button.no{background:transparent;border-color:var(--red);color:var(--red)}
   <div class="kpis">
     <div class="kpi"><div class="v" id="kAgents">0</div><div class="l">Agent tasks completed</div></div>
     <div class="kpi"><div class="v" id="kFiles">0</div><div class="l">Files produced</div></div>
-    <div class="kpi"><div class="v" id="kTests">–</div><div class="l">Static analysis (PMD Apex)</div></div>
+    <div class="kpi"><div class="v" id="kTests">–</div><div class="l">Verification</div></div>
     <div class="kpi"><div class="v" id="kLoops">0</div><div class="l">Auto-fix iterations</div></div>
     <div class="kpi"><div class="v" id="kFind">0</div><div class="l">Review &amp; security findings</div></div>
     <div class="kpi status"><div class="v" id="kStatus">Not started</div><div class="l">Run status</div></div>
@@ -168,7 +168,7 @@ button.no{background:transparent;border-color:var(--red);color:var(--red)}
         <span><span class="dot" style="background:var(--orange)"></span>Working</span>
         <span><span class="dot" style="background:var(--green)"></span>Done</span>
         <span><span class="dot" style="background:var(--red)"></span>Failed → rerouted</span>
-        <span><span class="dot" style="background:var(--yellow)"></span>Skipped (no org)</span>
+        <span><span class="dot" style="background:var(--yellow)"></span>Skipped</span>
         <span><span class="dot" style="background:var(--blue)"></span>Runs in parallel</span>
       </div>
     </div>
@@ -191,18 +191,7 @@ const vscode = acquireVsCodeApi();
 let T = {run_id:'', story:'', status:'', mode:'live', events:[]};
 let EV = T.events;
 let live = false, pending = null, follow = true;
-const NODES = [
-  {id:'requirements', ic:'BA', nm:'Salesforce BA Agent', rl:'Story, ACs, objects & access'},
-  {id:'architect', ic:'AR', nm:'Solution Architect Agent', rl:'Clicks vs code, data model'},
-  {id:'developer', ic:'DV', nm:'Apex Developer Agent', rl:'Apex, trigger & metadata', para:true},
-  {id:'tester', ic:'TS', nm:'Apex Test Agent', rl:'Test class from ACs', para:true},
-  {id:'static_analysis', ic:'SA', nm:'Static analysis', rl:'Metadata checks + PMD Apex'},
-  {id:'org_validation', ic:'OV', nm:'Org validation', rl:'Deploy validate + Apex tests'},
-  {id:'reviewer', ic:'CR', nm:'Code Review Agent', rl:'Salesforce best practices', para:true},
-  {id:'security', ic:'SC', nm:'Security Agent', rl:'CRUD/FLS, sharing, injection', para:true},
-  {id:'human_gate', ic:'HU', nm:'Human approval', rl:'Delivery lead signs off'},
-  {id:'release', ic:'RL', nm:'Salesforce DevOps Agent', rl:'Manifest, CI/CD, release notes'},
-];
+let NODES = [];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const nodeOf = e => e.kind==='agent' ? e.agent : e.kind==='tool' ? e.tool : e.kind==='human_gate' ? 'human_gate' : e.kind==='route' ? (e.to||'developer') : null;
 
@@ -283,7 +272,7 @@ const time = t => (t||'').slice(11,19);
 let fileTab = {};
 function renderDetail(){
   const D=document.getElementById('detail'), H=document.getElementById('detailHead'), M=document.getElementById('detailMeta');
-  if(pending && (selected<0 || selected===EV.length-1 || follow)){ renderApproval(); return; }
+  if(pending && pending.length && (selected<0 || selected===EV.length-1 || follow)){ renderApproval(); return; }
   if(!T.story && !EV.length){ H.textContent='No run yet'; M.textContent=''; D.innerHTML='<div class="empty">Run <b>Agentic SDLC: Run on a business request</b> or <b>Agentic SDLC: Run demo</b> from the Command Palette.</div>'; return; }
   if(selected<0 || pos===0){
     H.textContent='Business request'; M.textContent='Input to the agent team';
@@ -295,10 +284,10 @@ function renderDetail(){
   M.textContent=`Event ${e.seq} · ${time(e.time)} UTC`;
   if(e.kind==='plan'){
     H.textContent='Orchestrator · plan';
-    const label={requirements:'BA',architect:'Architect',developer:'Apex Developer',tester:'Apex Test',static_analysis:'Static analysis',org_validation:'Org validation',reviewer:'Review',security:'Security',human_gate:'Human gate',release:'DevOps'};
+    const label=Object.fromEntries(NODES.map(n=>[n.id,n.nm]));
     h=`<div class="detail-title"><h3>Task graph created</h3><span class="pill info">Orchestrator</span></div>
-      <p class="summary">The orchestrator breaks the request into a dependency graph. Independent steps run in parallel, and every quality gate sends failures back to the agent that owns the failing files.</p>
-      <div class="flow"><span class="box">BA</span><span class="arr">→</span><span class="box">Architect</span><span class="arr">→</span><span class="box">Apex Developer ∥ Apex Test</span><span class="arr">→</span><span class="box">Static analysis</span><span class="arr">→</span><span class="box">Org validation</span><span class="arr">↺</span><span class="arr">→</span><span class="box">Review ∥ Security</span><span class="arr">→</span><span class="box">Human gate</span><span class="arr">→</span><span class="box">DevOps</span></div>
+      <p class="summary">The orchestrator breaks the request into a dependency graph and assigns each task to a seat in the org chart. Independent steps run in parallel, and every quality gate sends failures back to the agent that owns the problem.</p>
+      <div class="flow">${NODES.map(n=>`<span class="box">${esc(n.nm)}</span>`).join('<span class="arr">→</span>')}</div>
       <div class="sec"><h4>Dependencies</h4>${e.graph.map(g=>`<div class="meta mono">${label[g.id]} ← ${g.after.length?g.after.map(x=>label[x]).join(', '):'(start)'}</div>`).join('')}</div>`;
   } else if(e.kind==='agent'){
     H.textContent=e.agent_name;
@@ -319,17 +308,19 @@ function renderDetail(){
   } else if(e.kind==='tool'){
     H.textContent=e.tool_name||e.tool;
     const state = e.skipped?['SKIPPED','warn']:e.passed?['PASSED','ok']:['FAILED','bad'];
-    const msg = e.skipped ? 'No Salesforce org is connected in this run, so the orchestrator records the gate as skipped and keeps going. With an org connected (SF_TARGET_ORG), it validates the deployment and runs the Apex tests, and sends any failure or low coverage back to the right agent.'
-      : e.tool==='static_analysis' ? (e.passed ? 'Metadata checks and PMD Apex rules are clean. The change moves on to org validation.'
+    const msg = e.skipped ? 'Nothing could run for this gate here (no environment configured or tool not installed), so it is recorded as skipped, never as passed, and shown to the approver.'
+      : e.tool==='static_analysis' ? (e.passed ? 'Static checks are clean.'
         : 'The gate found governor-limit risks before any human reviewed the code: SOQL and DML inside a loop would fail on a 200-record Data Loader batch. The orchestrator sends the findings to the agent that owns the file.')
-      : (e.passed ? 'Deployment validated and Apex tests passed with sufficient coverage.' : 'Org validation failed; the orchestrator routes the failures back.');
+      : e.tool==='verify' ? (e.passed ? 'Every blocking check detected for this stack passed. Advisory checks are reported but do not block.'
+        : 'A blocking check failed. The orchestrator sends the output to the agent that owns the problem: the developer for failing tests (tests are the spec), the owner of the flagged files for static findings.')
+      : (e.passed ? 'Environment checks passed.' : 'Environment validation failed; the orchestrator routes the failures back.');
     h=`<div class="detail-title"><h3>${esc(e.summary)}</h3><span class="pill ${state[1]}">${state[0]}</span></div><p class="summary">${msg}</p>`;
     if(e.violations && e.violations.length) h+=`<div class="sec"><h4>Violations</h4><table class="vt"><tr><th>File</th><th>Line</th><th>Rule</th><th>Message</th></tr>${e.violations.map(v=>`<tr><td class="mono"><button class="linkbtn" data-vfile="${esc(v.file)}">${esc(v.file.split('/').pop())}</button></td><td class="mono">${v.line??'–'}</td><td><span class="pill ${/Loop|CRUD|Sharing|SOQLInjection/.test(v.rule)?'bad':'warn'}">${esc(v.rule)}</span></td><td>${esc(v.message)}</td></tr>`).join('')}</table></div>`;
     h+=`<div class="sec"><h4>${e.skipped?'Gate configuration':'Tool output (executed for real)'}</h4><pre class="out">${pytestOut(e.output)}</pre></div>`;
   } else if(e.kind==='route'){
     H.textContent='Orchestrator · feedback loop';
     h=`<div class="detail-title"><h3>${esc(e.gate)} findings routed to the ${esc(e.to_name||'Developer Agent')}</h3><span class="pill warn">Iteration ${e.iteration}</span></div>
-      <p class="summary">The orchestrator looks at which files failed and sends the findings to the agent that owns them (the Apex Developer for production code, the Apex Test agent for test classes), along with the requirements, the design and the current source. The loop is capped (default 3 iterations) and escalates to a human if it can't converge.</p>`;
+      <p class="summary">The orchestrator looks at which files failed and sends the findings to the agent that owns them (the developer for failing tests, because tests are the spec; the owner of the flagged files for static findings), along with the requirements, the design and the current source. The loop is capped (default 3 iterations) and escalates to a human if it can't converge.</p>`;
   } else if(e.kind==='human_gate'){
     H.textContent='Human approval gate';
     h=`<div class="detail-title"><h3>Release ${e.approved?'approved':'rejected'}</h3><span class="pill ${e.approved?'ok':'bad'}">${e.approved?'APPROVED':'REJECTED'}</span></div>
@@ -353,7 +344,7 @@ function renderPipe(){
     else if(e.kind==='route') st[n]='active';
     else st[n]='done';
   }
-  const cur = pending ? 'human_gate' : pos>0 ? nodeOf(EV[pos-1]) : null;
+  const cur = (pending&&pending.some(a=>a.type!=='hire')) ? 'human_gate' : pos>0 ? nodeOf(EV[pos-1]) : null;
   const selNode = selected>=0 && pos>0 ? nodeOf(EV[selected]) : null;
   const loops = seen.filter(e=>e.kind==='route').length;
   document.getElementById('pipe').innerHTML=NODES.map(n=>{
@@ -369,16 +360,16 @@ function renderPipe(){
 function renderKpis(){
   const seen=EV.slice(0,pos), agents=seen.filter(e=>e.kind==='agent');
   const files=new Set(); agents.forEach(e=>(e.files||[]).forEach(f=>files.add(f)));
-  const sa=seen.filter(e=>e.kind==='tool'&&e.tool==='static_analysis'), last=sa[sa.length-1];
+  const sa=seen.filter(e=>e.kind==='tool'&&(e.tool==='verify'||e.tool==='static_analysis')), last=sa[sa.length-1];
   document.getElementById('kAgents').textContent=agents.length;
   document.getElementById('kFiles').textContent=files.size;
   const kt=document.getElementById('kTests');
-  kt.textContent = last ? (last.passed?'Clean':`${last.violations.length} issues`) : '–';
+  kt.textContent = last ? (last.passed?'Passed':'Failed') : '–';
   kt.style.color = last ? (last.passed?'var(--green)':'var(--red)') : '';
   document.getElementById('kLoops').textContent=seen.filter(e=>e.kind==='route').length;
   document.getElementById('kFind').textContent=agents.reduce((a,e)=>a+(e.findings||[]).length,0);
   const ks=document.getElementById('kStatus');
-  ks.textContent = pending ? 'Awaiting approval' : live ? 'Running…' : !EV.length ? 'Not started' : pos<EV.length ? 'Replaying…' : (T.status||'').toUpperCase();
+  ks.textContent = (pending&&pending.length) ? 'Awaiting approval' : live ? 'Running…' : !EV.length ? 'Not started' : pos<EV.length ? 'Replaying…' : (T.status||'').toUpperCase();
   ks.style.color = !live && pos===EV.length && T.status==='released' ? 'var(--green)' : (T.status==='error') ? 'var(--red)' : EV.length ? 'var(--orange)' : '';
   document.getElementById('prog').style.width= live ? '100%' : (EV.length?(pos/EV.length*100):0)+'%';
   document.getElementById('counter').textContent= live ? `${EV.length} step(s) so far` : `Step ${pos} / ${EV.length}`;
@@ -392,7 +383,7 @@ function outcome(e){
   return e.reason||'';
 }
 function actor(e){return e.kind==='agent'?e.agent_name:e.kind==='tool'?'Gate · '+(e.tool_name||e.tool).split(' (')[0]:e.kind==='human_gate'?'Human · '+e.approver:'Orchestrator'}
-function action(e){return e.kind==='agent'?e.step:e.kind==='plan'?'Build task graph':e.kind==='tool'?(e.tool==='static_analysis'?'Metadata checks + PMD Apex rules':'sf project deploy validate + Apex tests'):e.kind==='route'?'Feedback loop':e.kind==='human_gate'?'Release approval':e.kind}
+function action(e){return e.kind==='agent'?e.step:e.kind==='plan'?'Build task graph':e.kind==='tool'?(e.tool==='environment'?'Environment validation':'Build, static analysis & tests'):e.kind==='route'?'Feedback loop':e.kind==='human_gate'?'Release approval':e.kind}
 function renderLog(){
   document.getElementById('logBody').innerHTML=EV.map((e,i)=>`<tr data-i="${i}" class="${i>=pos?'future':''} ${i===selected?'cur':''}"><td class="mono">${e.seq}</td><td class="mono">${time(e.time)}</td><td>${esc(actor(e))}</td><td>${esc(action(e))}</td><td>${esc(outcome(e))}</td></tr>`).join('');
   document.querySelectorAll('#logBody tr').forEach(tr=>tr.onclick=()=>{selected=+tr.dataset.i;render();document.querySelector('.grid').scrollIntoView({behavior:'smooth',block:'start'})});
@@ -404,16 +395,34 @@ function render(){renderPipe();renderKpis();renderLog();renderDetail();
   show('reviewBtn',done&&T.mode!=='replay'&&T.status==='released'); show('exportBtn',done&&T.status==='released');
   document.getElementById('stepBtn').disabled=pos>=EV.length; document.getElementById('allBtn').disabled=pos>=EV.length;}
 function renderApproval(){
-  const c=pending, D=document.getElementById('detail');
-  document.getElementById('detailHead').textContent='Human approval gate'; document.getElementById('detailMeta').textContent='Waiting for you';
-  D.innerHTML=`<div class="anim"><div class="detail-title"><h3>Release approval required</h3><span class="pill warn">ACTION NEEDED</span></div>
-   <p class="summary">All automated gates and agent reviews are complete. Check the results and findings below, then approve or reject. Your decision and comment are written to the audit trail.</p>
-   <div class="flow" style="margin-bottom:12px"><span class="box">Gates: ${esc(c.gates)}</span><span class="box">Review: ${verdictPill(c.review)}</span><span class="box">Security: ${verdictPill(c.security)}</span></div>
-   ${(c.findings||[]).length?`<div class="sec"><h4>Findings to accept or follow up</h4>${c.findings.map(f=>`<div class="finding">${sevPill(f.severity)}<div>${esc(f.text)}</div></div>`).join('')}</div>`:''}
-   <div class="approve-card sec"><b>Your decision</b><textarea id="apComment" placeholder="Comment (optional): conditions, follow-ups, ticket links…"></textarea>
-   <div class="btnrow"><button class="ok" id="apYes">✓ Approve release</button><button class="no" id="apNo">✕ Reject</button></div></div></div>`;
-  document.getElementById('apYes').onclick=()=>vscode.postMessage({type:'approve',approved:true,comment:document.getElementById('apComment').value});
-  document.getElementById('apNo').onclick=()=>vscode.postMessage({type:'approve',approved:false,comment:document.getElementById('apComment').value});
+  // pending = list of approval records from the company store
+  const D=document.getElementById('detail');
+  const hires=pending.filter(a=>a.type==='hire'), others=pending.filter(a=>a.type!=='hire');
+  document.getElementById('detailHead').textContent='Waiting for you'; document.getElementById('detailMeta').textContent=`${pending.length} pending approval(s)`;
+  let h='<div class="anim">';
+  for(const a of others){
+    const p=a.payload||{};
+    h+=`<div class="detail-title"><h3>${esc(a.subject)}</h3><span class="pill warn">${esc(a.type.replace('_',' ').toUpperCase())}</span></div>
+     <p class="summary">${a.type==='release'?'All automated gates and agent reviews are complete. Check the results and findings, then approve or reject. Your decision is written to the audit trail.':
+       a.type==='budget_override'?`Budget exhausted (${esc(p.scope)}: $${p.spent_usd} of $${p.limit_usd}). Approving raises the limit by $${p.increase_usd} and resumes the work.`:
+       a.type==='escalation'?'The agents could not get this through the quality gate within the iteration limit. Approve to let them try again, or reject to stop the project.':
+       a.type==='gateway'?`An agent action needs permission: ${esc(p.action)}.`:''}</p>
+     ${p.gates?`<div class="flow" style="margin-bottom:12px"><span class="box">Gates: ${esc(p.gates)}</span>${Object.entries(p.verdicts||{}).map(([k,v])=>`<span class="box">${esc(k)}: ${verdictPill(v)}</span>`).join('')}${p.spend_usd!=null?`<span class="box">Spend: $${p.spend_usd}</span>`:''}</div>`:''}
+     ${(p.findings||[]).length?`<div class="sec"><h4>Findings to accept or follow up</h4>${p.findings.map(f=>`<div class="finding">${sevPill(f.severity)}<div>${esc(f.text)}</div></div>`).join('')}</div>`:''}
+     ${p.output?`<pre class="out">${esc(p.output)}</pre>`:''}
+     <div class="approve-card sec"><b>Your decision</b><textarea data-c="${a.id}" placeholder="Comment (optional): conditions, follow-ups, ticket links…"></textarea>
+     <div class="btnrow"><button class="ok" data-yes="${a.id}">✓ Approve</button><button class="no" data-no="${a.id}">✕ Reject</button></div></div>`;
+  }
+  if(hires.length){
+    h+=`<div class="detail-title sec"><h3>Hire ${hires.length} agent(s) into the org chart</h3><span class="pill warn">HIRING</span></div>
+     <p class="summary">New seats must be approved before they can work. Each one has a role, a model, a budget and skills.</p>
+     ${hires.map(a=>{const p=a.payload||{};return `<div class="finding"><span class="pill info">${esc(p.agent_key)}</span><div><b>${esc(a.subject.replace(/^Hire /,''))}</b><br><span class="meta">reports to ${esc(p.reports_to||'-')} · budget $${p.budget_usd??'-'} · skills ${esc((p.skills||[]).join(', ')||'-')}</span></div></div>`}).join('')}
+     <div class="btnrow sec"><button class="ok" id="hireAll">✓ Approve all hires</button></div>`;
+  }
+  D.innerHTML=h+'</div>';
+  D.querySelectorAll('[data-yes]').forEach(b=>b.onclick=()=>vscode.postMessage({type:'decide',id:b.dataset.yes,approved:true,comment:(D.querySelector(`[data-c="${b.dataset.yes}"]`)||{}).value||''}));
+  D.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>vscode.postMessage({type:'decide',id:b.dataset.no,approved:false,comment:(D.querySelector(`[data-c="${b.dataset.no}"]`)||{}).value||''}));
+  const ha=document.getElementById('hireAll'); if(ha) ha.onclick=()=>vscode.postMessage({type:'approveHires'});
 }
 
 // ---------- playback ----------
@@ -432,9 +441,9 @@ document.getElementById('speed').onchange=()=>{if(timer){clearInterval(timer);ti
 
 function setHeader(){
   document.getElementById('runId').textContent=T.run_id||'–';
-  document.getElementById('title').textContent = T.story ? (T.story.split('\n').find(l=>l.trim()&&!/^request from/i.test(l.trim()))||T.story).trim().slice(0,110) : 'Waiting for a run…';
+  document.getElementById('title').textContent = T.title || (T.story ? (T.story.split('\n').find(l=>l.trim()&&!/^request from/i.test(l.trim()))||T.story).trim().slice(0,110) : 'Waiting for a run…');
   document.getElementById('subtitle').innerHTML = T.mode==='replay' ? 'Recorded demo run: agent answers are replayed, quality gates run for real. No API key needed.'
-    : `Live run${T.model?` · model <b>${esc(T.model)}</b>`:''}${T.branch?` · branch <b>${esc(T.branch)}</b>`:''}. Source is written to force-app/; docs, manifest, CI and trace go to ${esc(T.artifacts_dir||'.agentic-sdlc/runs/…')}.`;
+    : `Live run${T.model?` · model <b>${esc(T.model)}</b>`:''}${T.branch?` · branch <b>${esc(T.branch)}</b>`:''}. The stack is detected from the repository. Source is written in place for review with git; docs, CI proposals and the trace go to .agentic-sdlc/projects/.`;
   document.getElementById('modeBadge').innerHTML = T.mode==='live'
     ? `<span class="dot" style="background:var(--green)"></span>Live${T.model?` · <b>${esc(T.model)}</b>`:''}`
     : `<span class="dot" style="background:var(--blue)"></span><b>Recorded demo</b>`;
@@ -443,17 +452,18 @@ function setHeader(){
 function err(msg){const b=document.getElementById('errBox'); b.textContent=msg; b.classList.toggle('hidden',!msg);}
 function addEvent(ev){
   if(ev.kind==='started'){Object.assign(T,{run_id:ev.run_id,story:ev.story,mode:ev.mode,model:ev.model,artifacts_dir:ev.artifacts_dir});setHeader();render();return;}
-  if(ev.kind==='finished'){T.status=ev.status;live=false;pending=null;pos=EV.length;selected=EV.length-1;render();return;}
+  if(ev.kind==='finished'){T.status=ev.status;live=false;pos=EV.length;selected=EV.length-1;render();return;}
+  if(ev.kind==='plan'&&ev.nodes){NODES=ev.nodes;if(ev.title)T.title=ev.title;if(ev.project_id)T.run_id=ev.project_id;setHeader();}
   if(ev.kind==='error'){T.status='error';live=false;pending=null;err(ev.message);pos=EV.length;render();return;}
   EV.push(ev); pos=EV.length; if(follow||selected===EV.length-2) selected=EV.length-1; render();
 }
 window.addEventListener('message', ({data:m})=>{
-  if(m.type==='reset'){stop();T={run_id:'',story:m.story,status:'',mode:m.mode,branch:m.branch,events:[]};EV=T.events;pos=0;selected=-1;fileTab={};live=true;pending=null;follow=true;err('');setHeader();render();}
+  if(m.type==='reset'){stop();T={run_id:'',story:m.story,title:m.title,status:'',mode:m.mode,branch:m.branch,events:[]};EV=T.events;pos=0;selected=-1;fileTab={};live=true;pending=null;follow=true;err('');setHeader();render();}
   else if(m.type==='event') addEvent(m.ev);
   else if(m.type==='replayEvents'){m.events.forEach(addEvent);}
-  else if(m.type==='approval'){pending=m.ctx;render();}
-  else if(m.type==='approvalDone'){pending=null;render();}
-  else if(m.type==='loadTrace'){stop();T=m.trace;EV=T.events;live=false;pending=null;pos=EV.length;selected=EV.length-1;fileTab={};err('');setHeader();render();}
+  else if(m.type==='approvals'){pending=m.items||[];render();}
+  else if(m.type==='continue'){live=true;err('');render();}
+  else if(m.type==='loadTrace'){stop();T=m.trace;EV=T.events;NODES=T.nodes||NODES;live=false;pending=null;pos=EV.length;selected=EV.length-1;fileTab={};err('');setHeader();render();}
 });
 document.getElementById('cancelBtn').onclick=()=>vscode.postMessage({type:'cancel'});
 document.getElementById('exportBtn').onclick=()=>vscode.postMessage({type:'exportDemo'});

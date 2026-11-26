@@ -1,9 +1,9 @@
-// Copies the Python engine (../engine) into this extension so it ships inside the .vsix.
-// The repo keeps one source of truth; vscode-extension/engine/ is generated and git-ignored.
+// Bundles the orchestrator (../orchestrator) into the extension so it ships inside the .vsix.
+// The repository keeps one source of truth; vscode-extension/orchestrator/ is generated and git-ignored.
 const fs = require("fs"); const path = require("path");
-const src = path.resolve(__dirname, "..", "..", "engine");
-const dst = path.resolve(__dirname, "..", "engine");
-const skip = new Set(["tests", "runs", "__pycache__", ".pytest_cache", "pytest.ini"]);
+const src = path.resolve(__dirname, "..", "..", "orchestrator");
+const dst = path.resolve(__dirname, "..", "orchestrator");
+const skip = new Set(["tests", "__pycache__", ".pytest_cache", "pytest.ini", ".agentic-sdlc"]);
 fs.rmSync(dst, { recursive: true, force: true });
 (function copy(from, to) {
   fs.mkdirSync(to, { recursive: true });
@@ -13,4 +13,4 @@ fs.rmSync(dst, { recursive: true, force: true });
     e.isDirectory() ? copy(a, b) : fs.copyFileSync(a, b);
   }
 })(src, dst);
-console.log(`engine synced: ${src} -> ${dst}`);
+console.log(`orchestrator bundled: ${src} -> ${dst}`);
