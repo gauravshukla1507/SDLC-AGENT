@@ -1,0 +1,37 @@
+{
+  "name": "ZenLabs Delivery",
+  "mission": "Deliver reliable software changes for our clients faster, on any technology, with a named human accountable for every release",
+  "goals": [
+    {"title": "Client delivery programme", "level": "goal",
+     "description": "Business requests from client product owners, delivered through the agent team"}
+  ],
+  "agents": [
+    {"key": "director", "name": "Delivery Director", "title": "Human accountable for releases", "adapter": "human"},
+    {"key": "architect", "name": "Architect Agent", "title": "Solution Architect", "reports_to": "director",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 2.0, "skills": ["team-conventions"]},
+    {"key": "requirements", "name": "Requirements Agent", "title": "Business Analyst", "reports_to": "director",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 1.0},
+    {"key": "developer", "name": "Developer Agent", "title": "Senior Software Engineer", "reports_to": "architect",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 3.0, "skills": ["team-conventions"]},
+    {"key": "tester", "name": "Test Agent", "title": "Test Engineer", "reports_to": "architect",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 2.0, "skills": ["team-conventions"]},
+    {"key": "reviewer", "name": "Code Review Agent", "title": "Technical Lead", "reports_to": "architect",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 1.0, "skills": ["team-conventions"]},
+    {"key": "security", "name": "Security Agent", "title": "Application Security Engineer", "reports_to": "director",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 1.0, "skills": ["secure-coding"]},
+    {"key": "release", "name": "Release Agent", "title": "DevOps / Release Engineer", "reports_to": "director",
+     "adapter": {"type": "claude_api", "model": "claude-sonnet-4-5"}, "budget_usd": 1.0, "skills": ["release-notes-style"]}
+  ],
+  "budgets": {"company_usd": 100.0, "project_usd": 8.0, "warn_at": 0.8},
+  "governance": {
+    "approve_hires": true,
+    "release_approval": true,
+    "require_verification": false,
+    "gateway": {"environment.validate": "allowed", "deploy.production": "off", "git.push": "ask_first"}
+  },
+  "concurrency": 4,
+  "routines": [
+    {"key": "monthly-test-backfill", "schedule": "@monthly 1 03:00", "title": "Monthly test-coverage backfill",
+     "request": "Find the module with the weakest automated tests in this repository and add boundary, negative and volume tests so it meets the team's coverage target. Do not change production code unless a test proves a bug."}
+  ]
+}

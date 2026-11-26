@@ -15,12 +15,21 @@ BA ─▶ Architect ─▶ ┌ Apex Developer ┐ ─▶ Static analysis ─▶ 
 
 | Folder | What it is |
 |---|---|
+| [`universal/`](universal/) | **Universal Orchestrator**: one AI delivery company and one playbook for any technology. It detects the stack (Salesforce, Java, .NET, Node/TS, Python, Go, Rust, Ruby, PHP, dbt, Terraform, polyglot), briefs the agents with that stack's conventions and verifies with its own tools. Includes org chart, goals, tasks and heartbeats, budgets, approvals, tool gateway, routines, audit and dashboard |
 | [`engine/`](engine/) | Salesforce orchestration engine (Python): agents, gates (metadata checks, PMD Apex, `sf` org validation), CLI, audit trace, demo-page builder |
 | [`vscode-extension/`](vscode-extension/) | **Agentic SDLC for Salesforce** VS Code extension: live run panel, approval in the IDE, diagnostics, git branch per run, demo export |
 | [`generic-poc/`](generic-poc/) | Language-agnostic version of the orchestration (Python/pytest) used for the first client POC |
 | [`docs/demos/`](docs/demos/) | Self-contained client demo pages (open in a browser) |
 
 ## Quick start
+
+### Universal Orchestrator (company mode)
+```bash
+cd universal && pip install -r requirements.txt
+for s in salesforce python node; do python uo.py demo --sample $s -w /tmp/uo-$s --store /tmp/uo-company.db; done
+python uo.py dashboard -w /tmp --store /tmp/uo-company.db --out /tmp/uo-dashboard.html && open /tmp/uo-dashboard.html
+python uo.py stacks -w ~/work/any-repo                    # detected stacks + verification plan
+```
 
 ### VS Code extension
 ```bash
@@ -45,11 +54,12 @@ python run.py --story-file samples/closed_won_onboarding_story.md --workspace /p
 
 | Component | Test |
 |---|---|
+| universal | `cd universal && python -m pytest -q` |
 | engine | `cd engine && python -m pytest -q` |
 | generic-poc | `cd generic-poc && python -m pytest -q` |
 | vscode-extension | `cd vscode-extension && npm ci && npm test` (`npm run test:webview` needs Playwright) |
 
-CI (`.github/workflows/ci.yml`) runs all three on every push and pull request and uploads the `.vsix` as a build artifact.
+CI (`.github/workflows/ci.yml`) runs all four on every push and pull request and uploads the `.vsix` as a build artifact.
 `vscode-extension/engine/` is generated from `engine/` at build time. Edit the engine only in `engine/`.
 
 ## Status and limits

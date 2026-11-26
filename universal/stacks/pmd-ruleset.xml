@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ruleset name="Salesforce delivery gate"
+    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
+  <description>Apex rules enforced by the orchestrator's static-analysis gate (PMD engine, as used by Salesforce Code Analyzer).</description>
+  <!-- Performance / governor limits -->
+  <rule ref="category/apex/performance.xml/OperationWithLimitsInLoop"/>
+  <rule ref="category/apex/performance.xml/AvoidNonRestrictiveQueries"/>
+  <!-- Security -->
+  <rule ref="category/apex/security.xml/ApexSharingViolations"/>
+  <rule ref="category/apex/security.xml/ApexSOQLInjection"/>
+  <rule ref="category/apex/security.xml/ApexCRUDViolation"/>
+  <rule ref="category/apex/security.xml/ApexInsecureEndpoint"/>
+  <rule ref="category/apex/security.xml/ApexSuggestUsingNamedCred"/>
+  <!-- Best practices -->
+  <rule ref="category/apex/bestpractices.xml/AvoidLogicInTrigger"/>
+  <rule ref="category/apex/bestpractices.xml/AvoidGlobalModifier"/>
+  <rule ref="category/apex/bestpractices.xml/ApexUnitTestClassShouldHaveAsserts"/>
+  <rule ref="category/apex/bestpractices.xml/ApexUnitTestShouldNotUseSeeAllDataTrue"/>
+  <rule ref="category/apex/bestpractices.xml/ApexAssertionsShouldIncludeMessage"/>
+  <!-- Error prone -->
+  <rule ref="category/apex/errorprone.xml/AvoidHardcodingId"/>
+  <rule ref="category/apex/errorprone.xml/EmptyCatchBlock"/>
+  <rule ref="category/apex/errorprone.xml/AvoidDirectAccessTriggerMap"/>
+  <!-- Design -->
+  <rule ref="category/apex/design.xml/CognitiveComplexity"/>
+  <rule ref="category/apex/design.xml/AvoidDeeplyNestedIfStmts"/>
+</ruleset>

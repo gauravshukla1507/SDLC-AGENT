@@ -27,6 +27,27 @@ jobs:
       - run: python -m pytest -q
         working-directory: engine
 
+  universal:
+    name: Universal Orchestrator (Python + PMD)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Install PMD
+        run: |
+          curl -sSL -o pmd.zip https://github.com/pmd/pmd/releases/download/pmd_releases%2F7.8.0/pmd-dist-7.8.0-bin.zip
+          unzip -q pmd.zip -d "$RUNNER_TEMP"
+          echo "PMD_BIN=$RUNNER_TEMP/pmd-bin-7.8.0/bin/pmd" >> "$GITHUB_ENV"
+      - run: pip install -r universal/requirements.txt
+      - run: python -m pytest -q
+        working-directory: universal
+
   generic-poc:
     name: Generic POC (Python)
     runs-on: ubuntu-latest

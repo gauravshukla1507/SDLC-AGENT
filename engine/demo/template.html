@@ -177,7 +177,7 @@ pre.out .f{color:var(--red)} pre.out .p{color:var(--green)}
 <script>
 const T = JSON.parse(document.getElementById('trace').textContent);
 const EV = T.events;
-const NODES = [
+const NODES = T.nodes || [
   {id:'requirements', ic:'BA', nm:'Salesforce BA Agent', rl:'Story, ACs, objects & access'},
   {id:'architect', ic:'AR', nm:'Solution Architect Agent', rl:'Clicks vs code, data model'},
   {id:'developer', ic:'DV', nm:'Apex Developer Agent', rl:'Apex, trigger & metadata', para:true},
@@ -305,7 +305,9 @@ function renderDetail(){
     const msg = e.skipped ? 'No Salesforce org is connected in this run, so the orchestrator records the gate as skipped and keeps going. With an org connected (SF_TARGET_ORG), it validates the deployment and runs the Apex tests, and sends any failure or low coverage back to the right agent.'
       : e.tool==='static_analysis' ? (e.passed ? 'Metadata checks and PMD Apex rules are clean. The change moves on to org validation.'
         : 'The gate found governor-limit risks before any human reviewed the code: SOQL and DML inside a loop would fail on a 200-record Data Loader batch. The orchestrator sends the findings to the agent that owns the file.')
-      : (e.passed ? 'Deployment validated and Apex tests passed with sufficient coverage.' : 'Org validation failed; the orchestrator routes the failures back.');
+      : e.tool==='verify' ? (e.passed ? 'Every blocking check detected for this stack passed. Advisory checks are reported but do not block.'
+        : 'A blocking check failed. The orchestrator sends the output to the agent that owns the problem: the developer for failing tests (tests are the spec), the owner of the flagged files for static findings.')
+      : (e.passed ? 'Environment checks passed.' : 'Environment validation failed; the orchestrator routes the failures back.');
     h=`<div class="detail-title"><h3>${esc(e.summary)}</h3><span class="pill ${state[1]}">${state[0]}</span></div><p class="summary">${msg}</p>`;
     if(e.violations && e.violations.length) h+=`<div class="sec"><h4>Violations</h4><table class="vt"><tr><th>File</th><th>Line</th><th>Rule</th><th>Message</th></tr>${e.violations.map(v=>`<tr><td class="mono">${esc(v.file.split('/').pop())}</td><td class="mono">${v.line??'–'}</td><td><span class="pill ${/Loop|CRUD|Sharing|SOQLInjection/.test(v.rule)?'bad':'warn'}">${esc(v.rule)}</span></td><td>${esc(v.message)}</td></tr>`).join('')}</table></div>`;
     h+=`<div class="sec"><h4>${e.skipped?'Gate configuration':'Tool output (executed for real)'}</h4><pre class="out">${pytestOut(e.output)}</pre></div>`;
@@ -350,11 +352,11 @@ function renderPipe(){
 function renderKpis(){
   const seen=EV.slice(0,pos), agents=seen.filter(e=>e.kind==='agent');
   const files=new Set(); agents.forEach(e=>(e.files||[]).forEach(f=>files.add(f)));
-  const sa=seen.filter(e=>e.kind==='tool'&&e.tool==='static_analysis'), last=sa[sa.length-1];
+  const sa=seen.filter(e=>e.kind==='tool'&&(e.tool==='static_analysis'||e.tool==='verify')), last=sa[sa.length-1];
   document.getElementById('kAgents').textContent=agents.length;
   document.getElementById('kFiles').textContent=files.size;
   const kt=document.getElementById('kTests');
-  kt.textContent = last ? (last.passed?'Clean':`${last.violations.length} issues`) : '–';
+  kt.textContent = last ? (last.passed?(T.nodes?'Passed':'Clean'):(T.nodes?'Failed':`${last.violations.length} issues`)) : '–';
   kt.style.color = last ? (last.passed?'var(--green)':'var(--red)') : '';
   document.getElementById('kLoops').textContent=seen.filter(e=>e.kind==='route').length;
   document.getElementById('kFind').textContent=agents.reduce((a,e)=>a+(e.findings||[]).length,0);
@@ -396,6 +398,13 @@ document.getElementById('resetBtn').onclick=()=>{stop();pos=0;selected=-1;fileTa
 document.getElementById('speed').onchange=()=>{if(timer){clearInterval(timer);timer=setInterval(step,+document.getElementById('speed').value)}};
 
 document.getElementById('runId').textContent=T.run_id;
+if(T.nodes){
+  const st=(T.stacks||[]).join(', ')||'any stack';
+  document.querySelector('header .kicker').textContent='Universal Orchestrator · demo run';
+  document.querySelector('header h1').textContent=`${T.title||'Delivery'}: business request to verified ${st} code, run by an AI delivery team`;
+  document.querySelector('header p').textContent=`${T.company||'The company'} runs seven agents with one playbook. The stack (${st}) was detected from the repository, and its build, analysis and test tools were selected automatically. A human approves the release.`;
+  document.querySelectorAll('.kpi .l')[2].textContent='Verification';
+}
 document.getElementById('modeBadge').innerHTML = T.mode==='live'
   ? `<span class="dot" style="background:var(--green)"></span>Live run · model <b>${esc(T.model)}</b>`
   : `<span class="dot" style="background:var(--blue)"></span><b>Recorded run</b> · quality gates executed for real`;
