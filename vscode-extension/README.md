@@ -1,69 +1,72 @@
-# Agentic SDLC for Salesforce (VS Code)
+# Agentic SDLC: AI Delivery Company for VS Code
 
-Turn a business request into **verified Salesforce source** inside VS Code. An orchestrator coordinates seven
-Claude-powered agents through real quality gates, and **you approve** before anything is final.
+Run a **company of AI agents** inside VS Code that delivers changes to *your* repository, on any technology, with
+you accountable for every release.
 
-| Agent | Produces |
-|---|---|
-| Salesforce BA | User story, acceptance criteria, objects/fields, access |
-| Solution Architect | Clicks vs code, data model, trigger/handler/service design, security, limits budget |
-| Apex Developer | Custom fields, permission set, trigger, handler, service (+ meta.xml) |
-| Apex Test | `@IsTest` classes from the acceptance criteria: bulk (200), negative, `System.runAs` |
-| Code Review / Security | Findings + verdicts (best practices, CRUD/FLS, sharing, injection) |
-| Salesforce DevOps | `package.xml`, GitHub Actions pipeline, release notes |
+Describe a change. The orchestrator plans it as tasks and assigns them to an org chart of Claude-powered agents:
+Requirements, Architect, Developer, Tester, Code Review, Security and Release. It detects your stack, briefs every
+agent with its conventions, and verifies each change with the stack's own build, analysis and test tools.
+Failures are routed back to the agent that owns them. You approve hires, the release, budget overrides and risky
+actions, and everything is recorded.
 
-**Quality gates:** metadata checks → **PMD Apex rules** (the engine behind Salesforce Code Analyzer) →
-**org validation** (`sf project deploy validate` + Apex tests + coverage, when a sandbox/scratch org is configured).
-A failing gate is routed back to the agent that owns the failing files, at most 3 times before it escalates to you.
+## Works with your stack, whatever it is
 
-## Features
+Detected automatically: **Java** (Maven, Gradle) · **.NET** · **Node.js / TypeScript** · **Python** · **Go** ·
+**Rust** · **Ruby** · **PHP** · **Salesforce** (Apex, metadata) · **dbt** · **Terraform**, including polyglot repos
+and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for anything else.
 
-- **Live run panel**: pipeline status, every agent's output with code diffs, gate results, and the audit trail.
-- **Human approval in VS Code**: approve or reject (with a comment) from the panel or the notification. The decision is logged.
-- **Problems panel**: PMD and metadata findings appear as diagnostics on the generated files.
-- **Safe for existing projects**:
-  - Each live run starts on a new git branch.
-  - Agents see the classes, triggers and fields that already exist (so they extend your trigger framework instead of adding a second trigger).
-  - Gates only check the files written in the run.
-  - Nothing outside `force-app/` is overwritten. Docs, manifest, CI files and the trace go to `.agentic-sdlc/runs/<id>/`.
-- **Client demo export**: one click produces a self-contained HTML replay of any run.
-- **Demo mode**: replays a recorded run with real gates. No API key needed.
+## In the IDE
+
+- **Projects**: every request is a project, broken into tasks with assignee, status and attempts. Open one in the
+  run panel, create a replay page for stakeholders, or reveal its artifacts.
+- **Approvals**: hiring, release, budget overrides, gateway actions and escalations. Approve or reject inline or
+  in the run panel; the project resumes automatically.
+- **Org chart**: seats, reporting lines, adapters and models, skills, and spend against budget.
+- **Stack & verification**: what was detected in this repository and exactly which tools will verify the work,
+  including tools that aren't installed.
+- **Run panel**: live pipeline, each agent's output with code diffs, real tool output, fix loops and the audit trail.
+- **Problems panel**: findings from the verification tools appear on the right lines.
+- **Company dashboard**: the org chart, goals and projects, task cards, approvals, spend, gateway rules,
+  routines and activity on one page.
+
+## Getting started
+
+1. Activity bar → **Agentic SDLC** → **Run a demo (no API key)** → pick Node, Python or Salesforce.
+   The same playbook runs every stack. Approve the hires and then the release when asked.
+2. **Agentic SDLC: Install engine dependencies**, then **Agentic SDLC: Set Anthropic API key** (stored in your OS keychain).
+3. Open any repository and run **Run a business request…**, or right-click a `.md` story → **Run on this file**.
+4. Review the diff on the new `agentic/…` branch, then commit and open a PR as usual. Your CI stays in charge.
+
+**Agentic SDLC: Set up company…** creates `.agentic-sdlc/company.json`. Use it to change seats, models and adapters
+(`claude_api`, `claude_code`, `http`), budgets, governance (which actions need approval) and routines.
 
 ## Requirements
 
-- Python 3.11+, then run **Agentic SDLC: Install engine dependencies**
-- Java 17+ and **PMD 7** on PATH (or set `agenticSdlc.pmdPath`)
-- An Anthropic API key: **Agentic SDLC: Set Anthropic API key** (stored in the OS keychain via SecretStorage)
-- Optional: Salesforce CLI (`sf`) and an authenticated **sandbox or scratch org** alias in `agenticSdlc.targetOrg`
-
-## Use
-
-1. Open your SFDX project.
-2. Command Palette → **Agentic SDLC: Run on a business request…** Or right-click a `.md`/`.txt` story → **Run on this file**,
-   or select text → **Run on selected text**.
-3. Watch the run panel. Fix nothing by hand; the agents loop on gate failures.
-4. Approve or reject at the human gate.
-5. Review the diff in Source Control, then commit and open a PR as usual. Your CI and release process stay in charge.
-
-Try **Agentic SDLC: Run demo** first. It runs in a temporary folder and needs no key.
+- Python 3.11+ (the orchestrator is bundled with the extension)
+- The tools of the stacks you use (npm, mvn/gradle, dotnet, pytest, go, cargo, PMD for Apex, …). Missing tools are
+  reported as *skipped*, never as *passed*.
+- An Anthropic API key for live runs; demos need none.
 
 ## Settings
 
 | Setting | Default | |
 |---|---|---|
-| `agenticSdlc.model` | `claude-sonnet-4-5` | Claude model id |
-| `agenticSdlc.targetOrg` | – | sf alias for the org gate (never production) |
-| `agenticSdlc.minCoverage` | 75 | Apex coverage threshold |
-| `agenticSdlc.maxFixIterations` | 3 | Gate retries before escalation |
-| `agenticSdlc.createGitBranch` | true | New branch per live run |
-| `agenticSdlc.pmdPath` / `pythonPath` | auto | Tool locations |
 | `agenticSdlc.approverName` | OS user | Name in the audit trail |
-| `agenticSdlc.recordRuns` | false | Save runs for offline replay demos |
+| `agenticSdlc.autoResume` | `true` | Resume once nothing is waiting for you |
+| `agenticSdlc.createGitBranch` | `true` | New branch per live run |
+| `agenticSdlc.maxFixIterations` | `3` | Gate retries before escalation |
+| `agenticSdlc.companyStore` | per repo | Shared company database across repositories |
+| `agenticSdlc.pythonPath` / `pmdPath` | auto | Tool locations |
+| `agenticSdlc.salesforceTargetOrg` | – | Only for Apex repos: sandbox/scratch alias for environment validation |
 
 ## Data and security
 
-- The agents send the business request, the generated docs and the names of your existing components to the
-  Anthropic API, plus source of the files they write. They do not read org data.
-- The org gate deploys in **validate-only** mode with the run's components. Point it at a sandbox or scratch org.
-- Every agent output, gate result and approval is recorded in `.agentic-sdlc/runs/<id>/trace.json`.
-  Add `.agentic-sdlc/` to `.gitignore` if you don't want traces in the repo.
+- **What leaves your machine:** agents send the request, the generated docs and source, and a map of your
+  existing code to the model provider configured per seat. They don't read production data.
+- **Where outputs go:** source changes are written in place for review with git. Docs, CI proposals and release
+  notes go to `.agentic-sdlc/projects/<id>/`, and the audit log lives in `.agentic-sdlc/company.db`. Add
+  `.agentic-sdlc/` to `.gitignore` if you don't want them in the repository.
+- **Risky actions:** the tool gateway (`allowed` / `ask_first` / `off`) controls them; production deployment is
+  `off` by default.
+
+The company model (org chart, goals, heartbeats, budgets, governance, audit) is inspired by Paperclip.

@@ -1,8 +1,8 @@
 {
-  "name": "agentic-sdlc-salesforce",
-  "displayName": "Agentic SDLC for Salesforce",
-  "description": "Multi-agent orchestration in VS Code: Claude-powered BA, architect, Apex developer, tester, reviewer, security and DevOps agents turn a business request into verified Salesforce source, with PMD and org-validation gates and a human approval step.",
-  "version": "0.1.0",
+  "name": "agentic-sdlc",
+  "displayName": "Agentic SDLC: AI Delivery Company",
+  "description": "Run an AI delivery company inside VS Code, on any technology. An orchestrator with an org chart of Claude-powered agents (requirements, architect, developer, tester, reviewer, security, release) detects your stack, briefs the agents with its conventions, verifies every change with the stack's own build/analysis/test tools, enforces budgets and human approvals, and keeps a full audit trail.",
+  "version": "1.0.0",
   "publisher": "zenlabs",
   "license": "SEE LICENSE IN LICENSE.txt",
   "icon": "media/icon.png",
@@ -11,29 +11,79 @@
   },
   "categories": [
     "AI",
-    "Programming Languages",
+    "Testing",
     "Linters",
     "Other"
   ],
   "keywords": [
-    "salesforce",
-    "apex",
-    "sfdx",
     "ai agents",
     "multi-agent",
-    "claude",
+    "orchestration",
     "sdlc",
-    "pmd"
+    "claude",
+    "code review",
+    "testing",
+    "devops",
+    "java",
+    "dotnet",
+    "node",
+    "typescript",
+    "python",
+    "go",
+    "salesforce"
   ],
   "main": "./out/extension.js",
   "activationEvents": [
-    "workspaceContains:sfdx-project.json"
+    "onStartupFinished"
   ],
   "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agenticSdlc",
+          "title": "Agentic SDLC",
+          "icon": "media/activity.svg"
+        }
+      ]
+    },
+    "views": {
+      "agenticSdlc": [
+        {
+          "id": "agenticSdlc.projects",
+          "name": "Projects"
+        },
+        {
+          "id": "agenticSdlc.approvals",
+          "name": "Approvals"
+        },
+        {
+          "id": "agenticSdlc.company",
+          "name": "Org chart"
+        },
+        {
+          "id": "agenticSdlc.stacks",
+          "name": "Stack & verification"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "agenticSdlc.projects",
+        "contents": "No projects yet. Describe a change and the agent team delivers it on this repository, whatever the stack.\n[Run a business request](command:agenticSdlc.runRequest)\n[Run a demo (no API key)](command:agenticSdlc.runDemo)\n[Set up company\u2026](command:agenticSdlc.initCompany)"
+      },
+      {
+        "view": "agenticSdlc.approvals",
+        "contents": "Nothing is waiting for you. Hiring, releases, budget overrides, gateway actions and escalations appear here."
+      },
+      {
+        "view": "agenticSdlc.company",
+        "contents": "The org chart appears after your first run.\n[Set up company\u2026](command:agenticSdlc.initCompany)"
+      }
+    ],
     "commands": [
       {
-        "command": "agenticSdlc.runStory",
-        "title": "Run on a business request\u2026",
+        "command": "agenticSdlc.runRequest",
+        "title": "Run a business request\u2026",
         "category": "Agentic SDLC",
         "icon": "$(rocket)"
       },
@@ -50,28 +100,80 @@
       },
       {
         "command": "agenticSdlc.runDemo",
-        "title": "Run demo (recorded, no API key needed)",
-        "category": "Agentic SDLC"
+        "title": "Run a demo (no API key)",
+        "category": "Agentic SDLC",
+        "icon": "$(play-circle)"
       },
       {
-        "command": "agenticSdlc.showPanel",
+        "command": "agenticSdlc.resume",
+        "title": "Resume projects",
+        "category": "Agentic SDLC",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "agenticSdlc.approve",
+        "title": "Approve",
+        "category": "Agentic SDLC",
+        "icon": "$(check)"
+      },
+      {
+        "command": "agenticSdlc.reject",
+        "title": "Reject",
+        "category": "Agentic SDLC",
+        "icon": "$(close)"
+      },
+      {
+        "command": "agenticSdlc.approveAllHires",
+        "title": "Approve all hires",
+        "category": "Agentic SDLC",
+        "icon": "$(person-add)"
+      },
+      {
+        "command": "agenticSdlc.refresh",
+        "title": "Refresh",
+        "category": "Agentic SDLC",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "agenticSdlc.useWorkspace",
+        "title": "Show my workspace",
+        "category": "Agentic SDLC",
+        "icon": "$(root-folder)"
+      },
+      {
+        "command": "agenticSdlc.showRunPanel",
         "title": "Show run panel",
+        "category": "Agentic SDLC",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "agenticSdlc.openProject",
+        "title": "Open project in run panel",
         "category": "Agentic SDLC"
       },
       {
-        "command": "agenticSdlc.openRun",
-        "title": "Open a previous run\u2026",
-        "category": "Agentic SDLC"
+        "command": "agenticSdlc.showDashboard",
+        "title": "Company dashboard",
+        "category": "Agentic SDLC",
+        "icon": "$(dashboard)"
       },
       {
-        "command": "agenticSdlc.exportDemo",
-        "title": "Export client demo page from a run\u2026",
-        "category": "Agentic SDLC"
+        "command": "agenticSdlc.openReplayPage",
+        "title": "Create replay page for stakeholders",
+        "category": "Agentic SDLC",
+        "icon": "$(export)"
       },
       {
-        "command": "agenticSdlc.cancel",
-        "title": "Cancel current run",
-        "category": "Agentic SDLC"
+        "command": "agenticSdlc.revealArtifacts",
+        "title": "Reveal project artifacts",
+        "category": "Agentic SDLC",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "agenticSdlc.initCompany",
+        "title": "Set up company (org chart, budgets, governance)\u2026",
+        "category": "Agentic SDLC",
+        "icon": "$(organization)"
       },
       {
         "command": "agenticSdlc.setApiKey",
@@ -87,9 +189,99 @@
         "command": "agenticSdlc.installDependencies",
         "title": "Install engine dependencies",
         "category": "Agentic SDLC"
+      },
+      {
+        "command": "agenticSdlc.cancel",
+        "title": "Cancel current run",
+        "category": "Agentic SDLC",
+        "icon": "$(debug-stop)"
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "agenticSdlc.runRequest",
+          "when": "view == agenticSdlc.projects",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agenticSdlc.runDemo",
+          "when": "view == agenticSdlc.projects",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agenticSdlc.resume",
+          "when": "view == agenticSdlc.projects",
+          "group": "navigation@3"
+        },
+        {
+          "command": "agenticSdlc.showDashboard",
+          "when": "view == agenticSdlc.projects",
+          "group": "navigation@4"
+        },
+        {
+          "command": "agenticSdlc.refresh",
+          "when": "view == agenticSdlc.projects",
+          "group": "navigation@5"
+        },
+        {
+          "command": "agenticSdlc.useWorkspace",
+          "when": "view == agenticSdlc.projects",
+          "group": "overflow"
+        },
+        {
+          "command": "agenticSdlc.cancel",
+          "when": "view == agenticSdlc.projects",
+          "group": "overflow"
+        },
+        {
+          "command": "agenticSdlc.approveAllHires",
+          "when": "view == agenticSdlc.approvals",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agenticSdlc.refresh",
+          "when": "view == agenticSdlc.approvals",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agenticSdlc.initCompany",
+          "when": "view == agenticSdlc.company",
+          "group": "navigation@1"
+        },
+        {
+          "command": "agenticSdlc.showDashboard",
+          "when": "view == agenticSdlc.company",
+          "group": "navigation@2"
+        },
+        {
+          "command": "agenticSdlc.refresh",
+          "when": "view == agenticSdlc.stacks",
+          "group": "navigation@1"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agenticSdlc.approve",
+          "when": "view == agenticSdlc.approvals && viewItem == approval.pending",
+          "group": "inline@1"
+        },
+        {
+          "command": "agenticSdlc.reject",
+          "when": "view == agenticSdlc.approvals && viewItem == approval.pending",
+          "group": "inline@2"
+        },
+        {
+          "command": "agenticSdlc.openReplayPage",
+          "when": "view == agenticSdlc.projects && viewItem == project.withTrace",
+          "group": "inline@1"
+        },
+        {
+          "command": "agenticSdlc.revealArtifacts",
+          "when": "view == agenticSdlc.projects && viewItem == project.withTrace",
+          "group": "inline@2"
+        }
+      ],
       "explorer/context": [
         {
           "command": "agenticSdlc.runFile",
@@ -119,60 +311,78 @@
         {
           "command": "agenticSdlc.runSelection",
           "when": "editorHasSelection"
+        },
+        {
+          "command": "agenticSdlc.approve",
+          "when": "false"
+        },
+        {
+          "command": "agenticSdlc.reject",
+          "when": "false"
+        },
+        {
+          "command": "agenticSdlc.openProject",
+          "when": "false"
+        },
+        {
+          "command": "agenticSdlc.openReplayPage",
+          "when": "false"
+        },
+        {
+          "command": "agenticSdlc.revealArtifacts",
+          "when": "false"
         }
       ]
     },
     "configuration": {
       "title": "Agentic SDLC",
       "properties": {
-        "agenticSdlc.model": {
-          "type": "string",
-          "default": "claude-sonnet-4-5",
-          "description": "Claude model id used by the agents."
-        },
-        "agenticSdlc.targetOrg": {
+        "agenticSdlc.approverName": {
           "type": "string",
           "default": "",
-          "description": "sf CLI alias of a sandbox or scratch org. When set, the org-validation gate runs `sf project deploy validate` with the generated Apex tests. Never use production."
+          "description": "Name recorded in the audit trail for your approvals. Empty = OS user name."
         },
-        "agenticSdlc.minCoverage": {
-          "type": "number",
-          "default": 75,
-          "minimum": 75,
-          "maximum": 100,
-          "description": "Minimum Apex code coverage (%) for the org-validation gate."
-        },
-        "agenticSdlc.maxFixIterations": {
-          "type": "number",
-          "default": 3,
-          "minimum": 1,
-          "maximum": 6,
-          "description": "How many times a failing gate is routed back to an agent before escalating to you."
-        },
-        "agenticSdlc.pmdPath": {
-          "type": "string",
-          "default": "",
-          "description": "Path to the PMD 7 launcher (pmd / pmd.bat) if it is not on PATH."
-        },
-        "agenticSdlc.pythonPath": {
-          "type": "string",
-          "default": "",
-          "description": "Python 3.11+ interpreter. Empty = auto-detect (python3 / python / py)."
+        "agenticSdlc.autoResume": {
+          "type": "boolean",
+          "default": true,
+          "description": "Resume the project automatically once nothing is waiting for a decision."
         },
         "agenticSdlc.createGitBranch": {
           "type": "boolean",
           "default": true,
-          "description": "Create a new git branch (agentic/<request>-<time>) before each live run so changes are easy to review and discard."
+          "description": "Create a branch (agentic/<request>-<time>) before each live run so changes are easy to review or discard."
         },
-        "agenticSdlc.approverName": {
+        "agenticSdlc.maxFixIterations": {
+          "type": "number",
+          "default": 3,
+          "minimum": 0,
+          "maximum": 6,
+          "description": "How often a failing quality gate is routed back to an agent before escalating to you."
+        },
+        "agenticSdlc.companyStore": {
           "type": "string",
           "default": "",
-          "description": "Name recorded in the audit trail when you approve or reject. Empty = OS user name."
+          "description": "Path to a shared company database so one company (org chart, budgets, audit) serves many repositories. Empty = per repository (.agentic-sdlc/company.db)."
         },
-        "agenticSdlc.recordRuns": {
-          "type": "boolean",
-          "default": false,
-          "description": "Save each live run's agent responses to .agentic-sdlc/recordings for offline replay demos."
+        "agenticSdlc.pythonPath": {
+          "type": "string",
+          "default": "",
+          "description": "Python 3.11+ for the orchestrator. Empty = auto-detect."
+        },
+        "agenticSdlc.pmdPath": {
+          "type": "string",
+          "default": "",
+          "description": "PMD 7 launcher, used when a Salesforce (Apex) stack is detected and PMD is not on PATH."
+        },
+        "agenticSdlc.salesforceTargetOrg": {
+          "type": "string",
+          "default": "",
+          "description": "Only for Salesforce stacks: sf CLI alias of a sandbox/scratch org for environment validation. Never production."
+        },
+        "agenticSdlc.minCoverage": {
+          "type": "number",
+          "default": 75,
+          "description": "Minimum coverage (%) for platform environment validation where the platform reports it (e.g. Apex)."
         }
       }
     }

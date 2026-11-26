@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ZenLabs Delivery – Universal Orchestrator</title>
+<style>
+:root{--navy:#0F1B2D;--navy2:#16263D;--navy3:#1E3150;--line:#2A3D5A;--paper:#F4F1EA;--muted:#A9B4C4;--orange:#F2864F;
+--green:#4CC38A;--red:#F0616D;--yellow:#E8C35A;--blue:#6AA7FF}
+*{box-sizing:border-box}body{margin:0;background:var(--navy);color:var(--paper);font:14px/1.5 Inter,system-ui,sans-serif}
+.wrap{max-width:1500px;margin:0 auto;padding:24px}h1,h2,h4{margin:0;font-family:"Space Grotesk",Inter,sans-serif}
+.kicker{color:var(--orange);font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase}
+h1{font-size:28px;margin:4px 0}.sub{color:var(--muted);max-width:900px}
+.mono{font-family:ui-monospace,Menlo,monospace}.small{font-size:12px;color:var(--muted)}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:10px;margin:18px 0}
+.kpi{background:var(--navy2);border:1px solid var(--line);border-radius:12px;padding:12px 14px}.kpi .v{font-size:24px;font-weight:700}.kpi .l{color:var(--muted);font-size:12px}
+.grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:16px;align-items:start}
+.panel{background:var(--navy2);border:1px solid var(--line);border-radius:14px;margin-bottom:16px;overflow:hidden}
+.ph{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line)}.ph h2{font-size:15px}
+.pb{padding:12px 16px}
+.seat{display:flex;gap:12px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--navy);margin-bottom:8px}
+.av{width:34px;height:34px;border-radius:9px;background:var(--navy3);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px;flex:none}
+.av.human{background:var(--orange);color:var(--navy);border-color:var(--orange)}
+.who{display:flex;flex-direction:column;min-width:0}.who span{color:var(--muted);font-size:12px}
+.right{margin-left:auto;display:flex;flex-direction:column;align-items:flex-end;gap:4px;min-width:150px}
+.bar{width:150px;height:5px;background:var(--navy3);border-radius:4px;overflow:hidden}.bar>div{height:100%}
+.pill{font-size:11px;font-weight:600;border-radius:999px;padding:2px 9px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.ok{color:var(--green);border-color:var(--green)}.pill.warn{color:var(--yellow);border-color:var(--yellow)}
+.pill.bad{color:var(--red);border-color:var(--red)}.pill.info{color:var(--blue);border-color:var(--blue)}
+.goal{padding:6px 0;border-bottom:1px solid #22344F}.lvl{display:inline-block;min-width:66px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--orange)}
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:10px;padding:12px}
+.col h4{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin-bottom:8px}.col h4 span{color:var(--paper)}
+.card{background:var(--navy);border:1px solid var(--line);border-left:3px solid var(--blue);border-radius:8px;padding:8px 10px}
+.card.gate{border-left-color:var(--yellow)}.card.approval{border-left-color:var(--orange)}
+.ct{font-weight:600;font-size:13px;margin-top:6px}.cm{display:flex;justify-content:space-between;color:var(--muted);font-size:11px;margin-top:2px}
+.cr{color:#C9D2DE;font-size:12px;margin-top:6px}.cr.warn{color:var(--yellow)}
+table{width:100%;border-collapse:collapse;font-size:13px}th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:6px 10px;border-bottom:1px solid var(--line)}
+td{padding:6px 10px;border-bottom:1px solid #22344F;vertical-align:top}.scroll{max-height:420px;overflow:auto}
+@media(max-width:1000px){.grid{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}}
+</style></head><body><div class="wrap">
+<div class="kicker">Universal Orchestrator · company dashboard</div>
+<h1>ZenLabs Delivery</h1><div class="sub">Mission: Deliver reliable software changes for our clients faster, on any technology, with a named human accountable for every release</div>
+<div class="kpis"><div class="kpi"><div class="v">7</div><div class="l">AI agents active</div></div><div class="kpi"><div class="v">3</div><div class="l">Projects</div></div><div class="kpi"><div class="v">33/33</div><div class="l">Tasks done</div></div><div class="kpi"><div class="v">0</div><div class="l">Pending approvals</div></div><div class="kpi"><div class="v">$0.4541 / $100</div><div class="l">Spend (est. tokens)</div></div></div>
+<div class="grid"><div>
+<section class="panel"><div class="ph"><h2>Org chart</h2><span class="small">agents are hired through approval; humans stay accountable</span></div><div class="pb"><div class="seat" style="margin-left:0px">
+          <div class="av human">DD</div>
+          <div class="who"><b>Delivery Director</b><span>Human accountable for releases</span>
+            <span class="mono">human
+            </span></div>
+          <div class="right"><span class="pill ok">active</span>
+            
+          </div></div><div class="seat" style="margin-left:28px">
+          <div class="av ">AA</div>
+          <div class="who"><b>Architect Agent</b><span>Solution Architect</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+             · skills: team-conventions</span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.0407 / $2.00</span><div class="bar"><div style="width:2.0%;background:var(--green)"></div></div>
+          </div></div><div class="seat" style="margin-left:56px">
+          <div class="av ">DA</div>
+          <div class="who"><b>Developer Agent</b><span>Senior Software Engineer</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+             · skills: team-conventions</span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.1479 / $3.00</span><div class="bar"><div style="width:4.9%;background:var(--green)"></div></div>
+          </div></div><div class="seat" style="margin-left:56px">
+          <div class="av ">CR</div>
+          <div class="who"><b>Code Review Agent</b><span>Technical Lead</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+             · skills: team-conventions</span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.0479 / $1.00</span><div class="bar"><div style="width:4.8%;background:var(--green)"></div></div>
+          </div></div><div class="seat" style="margin-left:56px">
+          <div class="av ">TA</div>
+          <div class="who"><b>Test Agent</b><span>Test Engineer</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+             · skills: team-conventions</span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.0687 / $2.00</span><div class="bar"><div style="width:3.4%;background:var(--green)"></div></div>
+          </div></div><div class="seat" style="margin-left:28px">
+          <div class="av ">RA</div>
+          <div class="who"><b>Release Agent</b><span>DevOps / Release Engineer</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+             · skills: release-notes-style</span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.0711 / $1.00</span><div class="bar"><div style="width:7.1%;background:var(--green)"></div></div>
+          </div></div><div class="seat" style="margin-left:28px">
+          <div class="av ">RA</div>
+          <div class="who"><b>Requirements Agent</b><span>Business Analyst</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+            </span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.0310 / $1.00</span><div class="bar"><div style="width:3.1%;background:var(--green)"></div></div>
+          </div></div><div class="seat" style="margin-left:28px">
+          <div class="av ">SA</div>
+          <div class="who"><b>Security Agent</b><span>Application Security Engineer</span>
+            <span class="mono">claude_api · claude-sonnet-4-5
+             · skills: secure-coding</span></div>
+          <div class="right"><span class="pill ok">active</span>
+            <span class='mono small'>$0.0468 / $1.00</span><div class="bar"><div style="width:4.7%;background:var(--green)"></div></div>
+          </div></div></div></section>
+<section class="panel"><div class="ph"><h2>Approvals</h2><span class="small">0 pending</span></div><div class="scroll"><table><tr><th>Status</th><th>Type</th><th>Subject</th><th>By</th><th>Comment</th><th>Time</th></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>release</td><td>Release &#x27;Invoice late fees&#x27;</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:39:03</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>release</td><td>Release &#x27;Promo codes at checkout&#x27;</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:39:02</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>release</td><td>Release &#x27;Closed Won → onboarding handoff&#x27;</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:39:01</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Architect Agent (Solution Architect)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Developer Agent (Senior Software Engineer)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Release Agent (DevOps / Release Engineer)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Requirements Agent (Business Analyst)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Code Review Agent (Technical Lead)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Security Agent (Application Security Engineer)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr><tr><td><span class="pill ok">approved</span></td>
+        <td>hire</td><td>Hire Test Agent (Test Engineer)</td><td>Demo Approver</td>
+        <td>Auto-approved (demo mode)</td><td class="mono">12:38:56</td></tr></table></div></section>
+</div><div>
+<section class="panel"><div class="ph"><h2>Goals → projects</h2><span class="small">agents receive this ancestry with every task</span></div><div class="pb"><div class="goal" style="margin-left:0px"><span class="lvl">mission</span>Deliver reliable software changes for our clients faster, on any technology, with a named human accountable for every release </div><div class="goal" style="margin-left:22px"><span class="lvl">goal</span>Client delivery programme </div><div class="goal" style="margin-left:44px"><span class="lvl">project</span>Closed Won → onboarding handoff <span class="small mono">11/11 tasks · $0.2045 of $8.00</span> <span class="pill info">salesforce</span></div><div class="goal" style="margin-left:44px"><span class="lvl">project</span>Promo codes at checkout <span class="small mono">11/11 tasks · $0.1418 of $8.00</span> <span class="pill info">python</span></div><div class="goal" style="margin-left:44px"><span class="lvl">project</span>Invoice late fees <span class="small mono">11/11 tasks · $0.1078 of $8.00</span> <span class="pill info">node</span></div></div></section>
+<section class="panel"><div class="ph"><h2>Spend by agent</h2><span class="small">token counts estimated (recorded run)</span></div><table><tr><th>Agent</th><th>Runs</th><th>In tokens</th><th>Out tokens</th><th>Cost</th></tr><tr><td>requirements</td><td>3</td><td class="mono">2,309</td><td class="mono">1,605</td><td class="mono">$0.0310</td></tr><tr><td>architect</td><td>3</td><td class="mono">3,713</td><td class="mono">1,971</td><td class="mono">$0.0407</td></tr><tr><td>tester</td><td>3</td><td class="mono">5,631</td><td class="mono">3,453</td><td class="mono">$0.0687</td></tr><tr><td>developer</td><td>6</td><td class="mono">19,099</td><td class="mono">6,041</td><td class="mono">$0.1479</td></tr><tr><td>reviewer</td><td>3</td><td class="mono">12,678</td><td class="mono">655</td><td class="mono">$0.0479</td></tr><tr><td>security</td><td>3</td><td class="mono">12,478</td><td class="mono">627</td><td class="mono">$0.0468</td></tr><tr><td>release</td><td>3</td><td class="mono">12,469</td><td class="mono">2,244</td><td class="mono">$0.0711</td></tr></table></section>
+<section class="panel"><div class="ph"><h2>Tool gateway</h2><span class="small">allowed · ask_first · off</span></div><table><tr><td class="mono">environment.validate</td><td><span class="pill ok">allowed</span></td></tr><tr><td class="mono">deploy.production</td><td><span class="pill bad">off</span></td></tr><tr><td class="mono">git.push</td><td><span class="pill warn">ask_first</span></td></tr></table></section>
+<section class="panel"><div class="ph"><h2>Routines</h2></div><table><tr><th>Key</th><th>Schedule</th><th>Work</th><th>Last run</th></tr><tr><td>monthly-test-backfill</td><td class="mono">@monthly 1 03:00</td><td>Monthly test-coverage backfill</td><td class="mono">never</td></tr></table></section>
+</div></div>
+<section class="panel"><div class="ph"><h2>Project tasks: Closed Won → onboarding handoff <span class=small>· stack detected: salesforce</span></h2><span><span class="pill ok">done: 11</span></span></div><div class="board"><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Write user story &amp; acceptance criteria</div><div class="cm"><span>requirements</span></div>
+            <div class='cr'>Turned the Sales Ops request into one user story with 7 testable acceptance criteria: onboarding Case creation, Account activation, amount-based priority, de-duplication </div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Design solution &amp; file plan</div><div class="cm"><span>architect</span></div>
+            <div class='cr'>Chose an Apex trigger with a handler and a bulk-safe service over a record-triggered Flow, because AC-4 (one case per Account across a batch, highest amount wins) and AC-</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Implement the design</div><div class="cm"><span>developer</span></div>
+            <div class='cr'>Built the two custom fields, the Onboarding_Automation permission set, a logic-free OpportunityTrigger delegating to OpportunityTriggerHandler, and OnboardingService impl</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Write tests from acceptance criteria</div><div class="cm"><span>tester</span></div>
+            <div class='cr'>Wrote OnboardingServiceTest with 9 test methods derived from the acceptance criteria and design only: case creation, account activation, priority boundary (100,000 vs 99,</div>
+            
+            </div><div class="card gate"><div class="cm"><span class="pill ok">done</span>
+            <span>gate · try 1</span></div>
+            <div class="ct">Verify (build, static analysis, tests)</div><div class="cm"><span>orchestrator</span></div>
+            <div class='cr'>All blocking checks passed (Metadata checks: pass; PMD Apex rules: pass)</div>
+            
+            </div><div class="card gate"><div class="cm"><span class="pill ok">done</span>
+            <span>gate</span></div>
+            <div class="ct">Environment validation</div><div class="cm"><span>orchestrator</span></div>
+            <div class='cr'>Skipped: no environment checks configured (add &#x27;environment&#x27; to .agentic-sdlc/verify.json) - Salesforce org validation (deploy + Apex tests): Skipped: no Salesforce org c</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Code review</div><div class="cm"><span>reviewer</span></div>
+            <div class='cr'>Clean trigger-handler-service structure that follows the team standards and the design: logic-free trigger, one SOQL and two DML per transaction, user-mode data access an</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Security review</div><div class="cm"><span>security</span></div>
+            <div class='cr'>Sharing is enforced on every class, all SOQL runs WITH USER_MODE and all DML runs as user, there is no dynamic SOQL and no hardcoded Ids, and access is granted through a </div>
+            
+            </div><div class="card approval"><div class="cm"><span class="pill ok">done</span>
+            <span>approval</span></div>
+            <div class="ct">Release approval</div><div class="cm"><span>orchestrator</span></div>
+            
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Prepare CI pipeline &amp; release notes</div><div class="cm"><span>release</span></div>
+            <div class='cr'>Produced manifest/package.xml for all seven components, a GitHub Actions pipeline that runs the same PMD ruleset, validates the deployment with OnboardingServiceTest on p</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Fix verify findings (iteration 1)</div><div class="cm"><span>developer</span></div>
+            <div class='cr'>Fixed the static-analysis findings: OnboardingService ran a SOQL query and two DML statements inside the per-Opportunity loop (OperationWithLimitsInLoop x3), which would </div>
+            
+            </div></div></section><section class="panel"><div class="ph"><h2>Project tasks: Promo codes at checkout <span class=small>· stack detected: python</span></h2><span><span class="pill ok">done: 11</span></span></div><div class="board"><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Write user story &amp; acceptance criteria</div><div class="cm"><span>requirements</span></div>
+            <div class='cr'>Converted the product owner&#x27;s request into one user story with 9 numbered, testable acceptance criteria covering percentage and fixed codes, minimum order value, inclusiv</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Design solution &amp; file plan</div><div class="cm"><span>architect</span></div>
+            <div class='cr'>Designed a small, dependency-free `promo_engine` package: an immutable PromoCode catalogue entry, a PromoEngine with a single `apply()` entry point returning a PricedOrde</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Implement the design</div><div class="cm"><span>developer</span></div>
+            <div class='cr'>Implemented promo_engine per the design: Decimal money helper with half-up rounding (floats rejected), immutable PromoCode with value validation, PromoError hierarchy wit</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Write tests from acceptance criteria</div><div class="cm"><span>tester</span></div>
+            <div class='cr'>Wrote 19 pytest cases (13 test functions, 3 parametrised) from the acceptance criteria and design interface only, covering every AC-1..AC-9 with boundary cases: minimum e</div>
+            
+            </div><div class="card gate"><div class="cm"><span class="pill ok">done</span>
+            <span>gate · try 1</span></div>
+            <div class="ct">Verify (build, static analysis, tests)</div><div class="cm"><span>orchestrator</span></div>
+            <div class='cr'>All blocking checks passed (pytest: pass; ruff (lint): warn); 1 advisory warning(s)</div>
+            
+            </div><div class="card gate"><div class="cm"><span class="pill ok">done</span>
+            <span>gate</span></div>
+            <div class="ct">Environment validation</div><div class="cm"><span>orchestrator</span></div>
+            <div class='cr'>Skipped: no environment checks configured (add &#x27;environment&#x27; to .agentic-sdlc/verify.json)</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Code review</div><div class="cm"><span>reviewer</span></div>
+            <div class='cr'>Code is small, typed and readable, and maps cleanly to the design and acceptance criteria. All 19 tests pass, including the AC-7 cap fixed in iteration 1. No blocking iss</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Security review</div><div class="cm"><span>security</span></div>
+            <div class='cr'>No injection surface (pure computation, no I/O), money handled as Decimal with floats rejected, and agent file writes are confined to the workspace. Two medium items belo</div>
+            
+            </div><div class="card approval"><div class="cm"><span class="pill ok">done</span>
+            <span>approval</span></div>
+            <div class="ct">Release approval</div><div class="cm"><span>orchestrator</span></div>
+            
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Prepare CI pipeline &amp; release notes</div><div class="cm"><span>release</span></div>
+            <div class='cr'>Added a GitHub Actions workflow that runs the pytest suite on Python 3.11 and 3.12 for every push and pull request, and release notes recording scope, acceptance-criteria</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Fix verify findings (iteration 1)</div><div class="cm"><span>developer</span></div>
+            <div class='cr'>Fixed AC-7: the fixed-amount discount was not capped, so FLAT300 on a 199.00 order produced a negative total (-101.00). The discount is now capped at the subtotal after r</div>
+            
+            </div></div></section><section class="panel"><div class="ph"><h2>Project tasks: Invoice late fees <span class=small>· stack detected: node</span></h2><span><span class="pill ok">done: 11</span></span></div><div class="board"><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Write user story &amp; acceptance criteria</div><div class="cm"><span>requirements</span></div>
+            <div class='cr'>Turned the Finance request into one user story with 6 testable acceptance criteria: no fee on time, a 5-day grace period, flat fee plus 1.5% per started 30-day period, a </div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Design solution &amp; file plan</div><div class="cm"><span>architect</span></div>
+            <div class='cr'>Designed a dependency-free ES module (Node 20+) with one pure function, calculateLateFee, plus exported constants for the terms (grace days, period length, flat fee, rate</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Implement the design</div><div class="cm"><span>developer</span></div>
+            <div class='cr'>Implemented src/lateFees.js as designed: exported constants for the terms, strict validation of paise amounts and ISO calendar dates (round-tripped so 2026-02-30 is rejec</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Write tests from acceptance criteria</div><div class="cm"><span>tester</span></div>
+            <div class='cr'>Wrote tests/lateFees.test.js with 8 tests from the acceptance criteria and the design interface only: on-time and grace-period boundaries (day 5 free, day 6 charged), the</div>
+            
+            </div><div class="card gate"><div class="cm"><span class="pill ok">done</span>
+            <span>gate · try 1</span></div>
+            <div class="ct">Verify (build, static analysis, tests)</div><div class="cm"><span>orchestrator</span></div>
+            <div class='cr'>All blocking checks passed (tests: pass)</div>
+            
+            </div><div class="card gate"><div class="cm"><span class="pill ok">done</span>
+            <span>gate</span></div>
+            <div class="ct">Environment validation</div><div class="cm"><span>orchestrator</span></div>
+            <div class='cr'>Skipped: no environment checks configured (add &#x27;environment&#x27; to .agentic-sdlc/verify.json)</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Code review</div><div class="cm"><span>reviewer</span></div>
+            <div class='cr'>Small, pure and well-named module that matches the design: constants mirror the terms of service, integer basis-point maths avoids float errors, and the tests cover every</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Security review</div><div class="cm"><span>security</span></div>
+            <div class='cr'>Pure computation with no I/O, no dependencies (no supply-chain surface) and strict validation at the boundary: only safe integers and real ISO dates are accepted, and eve</div>
+            
+            </div><div class="card approval"><div class="cm"><span class="pill ok">done</span>
+            <span>approval</span></div>
+            <div class="ct">Release approval</div><div class="cm"><span>orchestrator</span></div>
+            
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Prepare CI pipeline &amp; release notes</div><div class="cm"><span>release</span></div>
+            <div class='cr'>Added a GitHub Actions workflow that runs `npm test` on Node 20 and 22, the same command the orchestrator used to verify the change, and release notes with components, ac</div>
+            
+            </div><div class="card agent"><div class="cm"><span class="pill ok">done</span>
+            <span>agent</span></div>
+            <div class="ct">Fix verify findings (iteration 1)</div><div class="cm"><span>developer</span></div>
+            <div class='cr'>Fixed the period calculation: it used Math.floor, so a payment 6 to 29 days late was charged zero periods and day 31 only one, under-charging every late customer (3 faili</div>
+            
+            </div></div></section>
+<section class="panel"><div class="ph"><h2>Activity log</h2><span class="small">append-only audit trail (latest first)</span></div><div class="scroll"><table><tr><th>Time</th><th>Actor</th><th>Action</th><th>Entity</th></tr><tr><td class="mono">12:39:03</td><td>orchestrator</td><td class="mono">project.released</td><td>goal:goal_8f703e4854</td></tr><tr><td class="mono">12:39:03</td><td>release</td><td class="mono">task.completed</td><td>task:release</td></tr><tr><td class="mono">12:39:03</td><td>release</td><td class="mono">heartbeat.wakeup</td><td>task:release</td></tr><tr><td class="mono">12:39:03</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_0985f435ba</td></tr><tr><td class="mono">12:39:03</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_0985f435ba</td></tr><tr><td class="mono">12:39:03</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:release_approval</td></tr><tr><td class="mono">12:39:03</td><td>security</td><td class="mono">task.completed</td><td>task:security</td></tr><tr><td class="mono">12:39:03</td><td>reviewer</td><td class="mono">task.completed</td><td>task:review</td></tr><tr><td class="mono">12:39:03</td><td>security</td><td class="mono">heartbeat.wakeup</td><td>task:security</td></tr><tr><td class="mono">12:39:03</td><td>reviewer</td><td class="mono">heartbeat.wakeup</td><td>task:review</td></tr><tr><td class="mono">12:39:03</td><td>gate</td><td class="mono">gate.passed</td><td>task:environment</td></tr><tr><td class="mono">12:39:03</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:environment</td></tr><tr><td class="mono">12:39:03</td><td>gate</td><td class="mono">gate.passed</td><td>task:verify</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:verify</td></tr><tr><td class="mono">12:39:02</td><td>developer</td><td class="mono">task.completed</td><td>task:fix-verify-1</td></tr><tr><td class="mono">12:39:02</td><td>developer</td><td class="mono">heartbeat.wakeup</td><td>task:fix-verify-1</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">task.routed</td><td>task:verify</td></tr><tr><td class="mono">12:39:02</td><td>gate</td><td class="mono">gate.failed</td><td>task:verify</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">stack.detected</td><td>goal:goal_8f703e4854</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:verify</td></tr><tr><td class="mono">12:39:02</td><td>developer</td><td class="mono">task.completed</td><td>task:build</td></tr><tr><td class="mono">12:39:02</td><td>tester</td><td class="mono">task.completed</td><td>task:tests</td></tr><tr><td class="mono">12:39:02</td><td>tester</td><td class="mono">heartbeat.wakeup</td><td>task:tests</td></tr><tr><td class="mono">12:39:02</td><td>developer</td><td class="mono">heartbeat.wakeup</td><td>task:build</td></tr><tr><td class="mono">12:39:02</td><td>architect</td><td class="mono">task.completed</td><td>task:design</td></tr><tr><td class="mono">12:39:02</td><td>architect</td><td class="mono">heartbeat.wakeup</td><td>task:design</td></tr><tr><td class="mono">12:39:02</td><td>requirements</td><td class="mono">task.completed</td><td>task:requirements</td></tr><tr><td class="mono">12:39:02</td><td>requirements</td><td class="mono">heartbeat.wakeup</td><td>task:requirements</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">plan.created</td><td>goal:goal_8f703e4854</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">project.created</td><td>goal:goal_8f703e4854</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">project.released</td><td>goal:goal_42798895bd</td></tr><tr><td class="mono">12:39:02</td><td>release</td><td class="mono">task.completed</td><td>task:release</td></tr><tr><td class="mono">12:39:02</td><td>release</td><td class="mono">heartbeat.wakeup</td><td>task:release</td></tr><tr><td class="mono">12:39:02</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_d30134d13e</td></tr><tr><td class="mono">12:39:02</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_d30134d13e</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:release_approval</td></tr><tr><td class="mono">12:39:02</td><td>reviewer</td><td class="mono">task.completed</td><td>task:review</td></tr><tr><td class="mono">12:39:02</td><td>security</td><td class="mono">task.completed</td><td>task:security</td></tr><tr><td class="mono">12:39:02</td><td>security</td><td class="mono">heartbeat.wakeup</td><td>task:security</td></tr><tr><td class="mono">12:39:02</td><td>reviewer</td><td class="mono">heartbeat.wakeup</td><td>task:review</td></tr><tr><td class="mono">12:39:02</td><td>gate</td><td class="mono">gate.passed</td><td>task:environment</td></tr><tr><td class="mono">12:39:02</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:environment</td></tr><tr><td class="mono">12:39:02</td><td>gate</td><td class="mono">gate.passed</td><td>task:verify</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:verify</td></tr><tr><td class="mono">12:39:01</td><td>developer</td><td class="mono">task.completed</td><td>task:fix-verify-1</td></tr><tr><td class="mono">12:39:01</td><td>developer</td><td class="mono">heartbeat.wakeup</td><td>task:fix-verify-1</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">task.routed</td><td>task:verify</td></tr><tr><td class="mono">12:39:01</td><td>gate</td><td class="mono">gate.failed</td><td>task:verify</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">stack.detected</td><td>goal:goal_42798895bd</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:verify</td></tr><tr><td class="mono">12:39:01</td><td>developer</td><td class="mono">task.completed</td><td>task:build</td></tr><tr><td class="mono">12:39:01</td><td>tester</td><td class="mono">task.completed</td><td>task:tests</td></tr><tr><td class="mono">12:39:01</td><td>tester</td><td class="mono">heartbeat.wakeup</td><td>task:tests</td></tr><tr><td class="mono">12:39:01</td><td>developer</td><td class="mono">heartbeat.wakeup</td><td>task:build</td></tr><tr><td class="mono">12:39:01</td><td>architect</td><td class="mono">task.completed</td><td>task:design</td></tr><tr><td class="mono">12:39:01</td><td>architect</td><td class="mono">heartbeat.wakeup</td><td>task:design</td></tr><tr><td class="mono">12:39:01</td><td>requirements</td><td class="mono">task.completed</td><td>task:requirements</td></tr><tr><td class="mono">12:39:01</td><td>requirements</td><td class="mono">heartbeat.wakeup</td><td>task:requirements</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">plan.created</td><td>goal:goal_42798895bd</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">project.created</td><td>goal:goal_42798895bd</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">project.released</td><td>goal:goal_4e8eb43a18</td></tr><tr><td class="mono">12:39:01</td><td>release</td><td class="mono">task.completed</td><td>task:release</td></tr><tr><td class="mono">12:39:01</td><td>release</td><td class="mono">heartbeat.wakeup</td><td>task:release</td></tr><tr><td class="mono">12:39:01</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_69cd20bbfd</td></tr><tr><td class="mono">12:39:01</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_69cd20bbfd</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:release_approval</td></tr><tr><td class="mono">12:39:01</td><td>reviewer</td><td class="mono">task.completed</td><td>task:review</td></tr><tr><td class="mono">12:39:01</td><td>security</td><td class="mono">task.completed</td><td>task:security</td></tr><tr><td class="mono">12:39:01</td><td>security</td><td class="mono">heartbeat.wakeup</td><td>task:security</td></tr><tr><td class="mono">12:39:01</td><td>reviewer</td><td class="mono">heartbeat.wakeup</td><td>task:review</td></tr><tr><td class="mono">12:39:01</td><td>gate</td><td class="mono">gate.passed</td><td>task:environment</td></tr><tr><td class="mono">12:39:01</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:environment</td></tr><tr><td class="mono">12:39:01</td><td>gate</td><td class="mono">gate.passed</td><td>task:verify</td></tr><tr><td class="mono">12:38:58</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:verify</td></tr><tr><td class="mono">12:38:58</td><td>developer</td><td class="mono">task.completed</td><td>task:fix-verify-1</td></tr><tr><td class="mono">12:38:58</td><td>developer</td><td class="mono">heartbeat.wakeup</td><td>task:fix-verify-1</td></tr><tr><td class="mono">12:38:58</td><td>orchestrator</td><td class="mono">task.routed</td><td>task:verify</td></tr><tr><td class="mono">12:38:58</td><td>gate</td><td class="mono">gate.failed</td><td>task:verify</td></tr><tr><td class="mono">12:38:58</td><td>orchestrator</td><td class="mono">stack.detected</td><td>goal:goal_4e8eb43a18</td></tr><tr><td class="mono">12:38:56</td><td>orchestrator</td><td class="mono">heartbeat.wakeup</td><td>task:verify</td></tr><tr><td class="mono">12:38:56</td><td>developer</td><td class="mono">task.completed</td><td>task:build</td></tr><tr><td class="mono">12:38:56</td><td>tester</td><td class="mono">task.completed</td><td>task:tests</td></tr><tr><td class="mono">12:38:56</td><td>tester</td><td class="mono">heartbeat.wakeup</td><td>task:tests</td></tr><tr><td class="mono">12:38:56</td><td>developer</td><td class="mono">heartbeat.wakeup</td><td>task:build</td></tr><tr><td class="mono">12:38:56</td><td>architect</td><td class="mono">task.completed</td><td>task:design</td></tr><tr><td class="mono">12:38:56</td><td>architect</td><td class="mono">heartbeat.wakeup</td><td>task:design</td></tr><tr><td class="mono">12:38:56</td><td>requirements</td><td class="mono">task.completed</td><td>task:requirements</td></tr><tr><td class="mono">12:38:56</td><td>requirements</td><td class="mono">heartbeat.wakeup</td><td>task:requirements</td></tr><tr><td class="mono">12:38:56</td><td>orchestrator</td><td class="mono">plan.created</td><td>goal:goal_4e8eb43a18</td></tr><tr><td class="mono">12:38:56</td><td>orchestrator</td><td class="mono">project.created</td><td>goal:goal_4e8eb43a18</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_5da7e9745f</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_5da7e9745f</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_e525e7cce4</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_e525e7cce4</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_3f5bab674a</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_3f5bab674a</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_f406782891</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_f406782891</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_073cc3f2b9</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_073cc3f2b9</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_8221c0cf77</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_8221c0cf77</td></tr><tr><td class="mono">12:38:56</td><td>human:Demo Approver</td><td class="mono">approval.approved</td><td>approval:apr_000b8c0907</td></tr><tr><td class="mono">12:38:56</td><td>governance</td><td class="mono">approval.requested</td><td>approval:apr_000b8c0907</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:release</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:security</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:reviewer</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:tester</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:developer</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:requirements</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:architect</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">agent.proposed</td><td>agent:director</td></tr><tr><td class="mono">12:38:56</td><td>system</td><td class="mono">company.created</td><td>company:ZenLabs Delivery</td></tr></table></div></section>
+</div></body></html>

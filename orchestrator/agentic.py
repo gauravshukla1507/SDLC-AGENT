@@ -1,0 +1,444 @@
+#!/usr/bin/env python3
+"""Agentic SDLC: run an AI delivery company on any repository, in any technology.
+
+The stack is detected from the repository (Salesforce, Java, .NET, Node/TypeScript, Python, Go, Rust,
+Ruby, PHP, dbt, Terraform, or several at once). Nothing to configure per technology.
+
+Delivery
+  agentic.py run      --request-file story.md -w ./repo        start a project (company created on first use)
+  agentic.py resume   -w ./repo                                continue projects after approvals
+  agentic.py demo     --sample node -w /tmp/demo               recorded run: salesforce | python | node
+
+People
+  agentic.py approvals -w ./repo                               what is waiting for a human
+  agentic.py approve  <id|all> --as "Name" [--reject] [--comment ...]
+
+Insight
+  agentic.py stacks | state | org | board | budget | activity | dashboard | demo-page | playbook
+Company
+  agentic.py init | routines [--run-due] | export --out f.json | import f.json
+
+State lives in <workspace>/.agentic-sdlc/company.db, or in a shared store (--store / $AGENTIC_STORE)
+so one company can serve many repositories. Add --json to read commands for machine output.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import shutil
+import sys
+import threading
+from pathlib import Path
+
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
+
+import stacks  # noqa: E402
+from core import governance as gov  # noqa: E402
+from core.company import create_company, hire_agents, load_spec, org_chart  # noqa: E402
+from core.dashboard import render_dashboard  # noqa: E402
+from core.engine import Engine  # noqa: E402
+from core.llm import ReplayLLM  # noqa: E402
+from core.playbook import get_playbook  # noqa: E402
+from core.portability import export_company, import_company  # noqa: E402
+from core.routines import due_routines, mark_run  # noqa: E402
+from core.state import company_state  # noqa: E402
+from core.store import Store  # noqa: E402
+
+DEFAULT_SPEC = HERE / "companies" / "default-company.json"
+SAMPLES = {"salesforce": "salesforce-closed-won", "python": "python-promo-codes", "node": "node-late-fees"}
+_OUT = threading.Lock()
+STORE_OVERRIDE: str | None = None
+
+
+def out(line: str = ""):
+    with _OUT:
+        sys.stdout.write(str(line) + "\n")
+        sys.stdout.flush()
+
+
+def emit_json(data):
+    out(json.dumps(data, indent=2, default=str))
+
+
+# ------------------------------------------------------------------ company & store
+def agentic_dir(ws: Path) -> Path:
+    return Path(ws) / ".agentic-sdlc"
+
+
+def db_path(ws: Path) -> Path:
+    return Path(STORE_OVERRIDE or os.environ.get("AGENTIC_STORE") or agentic_dir(ws) / "company.db")
+
+
+def spec_path_for(ws: Path, explicit: str | None) -> Path:
+    """Company spec: --company, else the repo's .agentic-sdlc/company.json, else the built-in default."""
+    if explicit:
+        return Path(explicit)
+    local = agentic_dir(ws) / "company.json"
+    return local if local.exists() else DEFAULT_SPEC
+
+
+def open_company(ws: Path, spec: str | None = None, name: str | None = None, create: bool = False):
+    store = Store(db_path(ws))
+    company = (store.one("SELECT * FROM companies WHERE name=?", name) if name
+               else store.one("SELECT * FROM companies ORDER BY created LIMIT 1"))
+    if company is None or (spec and create):
+        if not create:
+            sys.exit(f"No company in {db_path(ws)}. Run `agentic.py init` or `agentic.py run` first.")
+        company = create_company(store, load_spec(spec_path_for(ws, spec)))
+    return store, company
+
+
+def make_approver(value: str):
+    if value.startswith("auto:"):
+        return gov.auto_approver(value.split(":", 1)[1])
+    if value.startswith("hires:"):
+        return gov.auto_approver(value.split(":", 1)[1], "Hire approved", types={"hire"})
+    return {"cli": gov.cli_approver, "stdin": gov.stdin_approver, "deferred": gov.deferred_approver}[value]
+
+
+def emitter(enabled: bool):
+    return (lambda ev: out("@@EVENT " + json.dumps(ev, default=str))) if enabled else None
+
+
+def gate_options(args) -> dict:
+    return {"target_org": getattr(args, "target_org", None) or os.environ.get("SF_TARGET_ORG"),
+            "min_coverage": getattr(args, "min_coverage", 75)}
+
+
+def replay_for(ws: Path, explicit: str | None):
+    """Demos remember their recording so `resume` can continue them offline."""
+    if explicit:
+        return ReplayLLM(explicit)
+    marker = agentic_dir(ws) / "replay.json"
+    if marker.exists():
+        return ReplayLLM(json.loads(marker.read_text(encoding="utf-8"))["recording"])
+    return None
+
+
+def exit_code(status: str) -> int:
+    return 0 if status == "released" else 2 if status in ("waiting_approval", "escalated") else 1
+
+
+# ------------------------------------------------------------------ delivery
+def cmd_init(args):
+    ws = Path(args.workspace)
+    store, company = open_company(ws, args.company, args.company_name, create=True)
+    hire_agents(store, company, gov.Governance(store, company, lambda *a, **k: store.log(company["id"], *a, **k),
+                                               make_approver(args.approver)))
+    out(f"Company '{company['name']}' ready in {db_path(ws)}")
+    return 0
+
+
+def _start(args, replay=None, request=None, title=None):
+    ws = Path(args.workspace)
+    if getattr(args, "clean", False) and ws.exists():
+        shutil.rmtree(ws)
+    ws.mkdir(parents=True, exist_ok=True)
+    store, company = open_company(ws, args.company, args.company_name, create=True)
+    engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), replay=replay,
+                    log=out, max_fix_iterations=args.max_fix_iterations, on_event=emitter(args.events),
+                    gate_options=gate_options(args))
+    hire_agents(store, company, engine.governance)
+    request = request or args.request or Path(args.request_file).read_text(encoding="utf-8")
+    goal = engine.start_project(request, title=title or args.title, budget_usd=args.budget)
+    out(f"Project {goal['id']}: {goal['title']}  (company: {company['name']}; workspace: {ws})")
+    status = engine.run()
+    if status in ("waiting_approval", "escalated"):
+        out(f"\nWaiting for a human. See: agentic.py approvals -w {ws}")
+    return exit_code(status)
+
+
+def cmd_run(args):
+    return _start(args)
+
+
+def cmd_demo(args):
+    sample = HERE / "samples" / SAMPLES[args.sample]
+    meta = json.loads((sample / "meta.json").read_text(encoding="utf-8"))
+    ws = Path(args.workspace)
+    if args.clean and ws.exists():
+        shutil.rmtree(ws)
+    agentic_dir(ws).mkdir(parents=True, exist_ok=True)
+    (agentic_dir(ws) / "replay.json").write_text(json.dumps({"recording": str(sample / "recording.json")}),
+                                                 encoding="utf-8")
+    args.clean = False
+    return _start(args, replay=ReplayLLM(sample / "recording.json"),
+                  request=(sample / "story.md").read_text(encoding="utf-8"), title=meta["title"])
+
+
+def cmd_resume(args):
+    ws = Path(args.workspace)
+    store, company = open_company(ws, name=args.company_name)
+    approver = make_approver(args.approver)
+    code = 0
+    for g in store.all("SELECT * FROM goals WHERE company_id=? AND level='project' ORDER BY created", company["id"]):
+        if args.project and g["id"] != args.project:
+            continue
+        tasks = store.all("SELECT status FROM tasks WHERE goal_id=?", g["id"])
+        if all(t["status"] in ("done", "cancelled") for t in tasks):
+            continue
+        pws = Path(g["workspace"] or ws)
+        engine = Engine(store, company, get_playbook(), pws, approver=approver, log=out,
+                        on_event=emitter(args.events), gate_options=gate_options(args),
+                        replay=replay_for(pws, args.replay), max_fix_iterations=args.max_fix_iterations)
+        engine.attach(g["id"])
+        out(f"Resuming {g['title']} ({g['id']})")
+        code = max(code, exit_code(engine.run()))
+    return code
+
+
+# ------------------------------------------------------------------ approvals
+def cmd_approvals(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    rows = gov.Governance(store, company, lambda *a, **k: None).pending()
+    if args.json:
+        return emit_json(rows) or 0
+    if not rows:
+        out("No pending approvals.")
+    for r in rows:
+        out(f"{r['id']}  [{r['type']}]  {r['subject']}")
+        for k, v in (r["payload"] or {}).items():
+            if v not in (None, "", [], {}):
+                out(f"      {k}: {json.dumps(v, default=str)[:220]}")
+    return 0
+
+
+def cmd_approve(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    g = gov.Governance(store, company, lambda *a, **k: store.log(company["id"], *a, **k))
+    pending = g.pending()
+    if args.id == "all":
+        ids = [r["id"] for r in pending if not args.type or r["type"] == args.type]
+    else:
+        ids = [args.id]
+    results = [g.resolve(i, not args.reject, args.as_name, args.comment or "") for i in ids]
+    if args.json:
+        return emit_json(results) or 0
+    for r in results:
+        out(f"{r['id']}: {r['status']} by {r['decided_by']}")
+    out("Run `agentic.py resume` to continue.")
+    return 0
+
+
+# ------------------------------------------------------------------ insight
+def cmd_stacks(args):
+    ws = Path(args.workspace)
+    detected, checks = stacks.checks_for(ws, "verify")
+    _, env = stacks.checks_for(ws, "environment")
+    plan = [{"kind": c.kind, "blocking": c.blocking, "name": c.name, "stack": c.stack,
+             "command": "built-in" if c.runner else " ".join(c.cmd),
+             "installed": True if c.runner else bool(shutil.which(c.tool) or (ws / c.tool).exists())}
+            for c in checks + env]
+    if args.json:
+        return emit_json({"stacks": [{"name": s.name, "evidence": s.evidence, "skill": s.skill} for s in detected],
+                          "checks": plan, "profile": stacks.describe(detected)}) or 0
+    out(stacks.describe(detected))
+    out("\nVerification plan:")
+    for c in plan:
+        flag = "" if c["installed"] else "   <- not installed"
+        out(f"  {c['kind']:<11} {'blocking' if c['blocking'] else 'advisory':<9} {c['name']:<28} {c['command']}{flag}")
+    return 0
+
+
+def cmd_state(args):
+    ws = Path(args.workspace)
+    if not db_path(ws).exists():
+        return emit_json({"company": None, "agents": [], "projects": [], "approvals": [], "spend": {},
+                          "routines": [], "store": str(db_path(ws))}) or 0
+    store, company = open_company(ws, name=args.company_name)
+    data = company_state(store, company)
+    data["store"] = str(db_path(ws))
+    return emit_json(data) or 0
+
+
+def cmd_org(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    out(f"{company['name']}\nMission: {company['mission']}\n")
+    for a in org_chart(store, company["id"]):
+        budget = f"${a['spent_usd']:.4f}/{a['budget_usd']:.2f}" if a["budget_usd"] else ""
+        out(f"{'    ' * a['depth']}{a['name']} - {a['title']}  [{a['status']}] {budget}")
+    return 0
+
+
+def cmd_board(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    for p in company_state(store, company)["projects"]:
+        out(f"\n{p['title']}  [{p['status']}]  stacks: {', '.join(p['stacks']) or '-'}  ({p['id']})")
+        for t in p["tasks"]:
+            out(f"  {t['status']:<12} {t['assignee']:<13} {t['title']}")
+    return 0
+
+
+def cmd_budget(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    s = company_state(store, company)
+    lim = s["spend"]["limit_usd"]
+    out(f"Company spend: ${s['spend']['total_usd']:.4f}" + (f" of ${lim:.2f}" if lim else "") +
+        ("  (includes estimated tokens)" if s["spend"]["estimated"] else ""))
+    for a in s["agents"]:
+        if a["budget_usd"]:
+            out(f"  {a['name']:<28} ${a['spent_usd']:.4f} of ${a['budget_usd']:.2f}")
+    return 0
+
+
+def cmd_activity(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    rows = store.all("SELECT * FROM activity WHERE company_id=? ORDER BY seq DESC LIMIT ?", company["id"], args.n)[::-1]
+    if args.json:
+        return emit_json(rows) or 0
+    for r in rows:
+        out(f"{r['ts'][11:19]}  {r['actor']:<22} {r['action']:<24} {r['entity']}")
+    return 0
+
+
+def cmd_dashboard(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    target = Path(args.out or (agentic_dir(Path(args.workspace)) / "dashboard.html"))
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(render_dashboard(store, company), encoding="utf-8")
+    out(f"Dashboard written to {target}")
+    return 0
+
+
+def cmd_demo_page(args):
+    trace = json.loads(Path(args.trace).read_text(encoding="utf-8"))
+    template = (HERE / "core" / "demo_page.html").read_text(encoding="utf-8")
+    target = Path(args.out or Path(args.trace).with_name("run_replay.html"))
+    target.write_text(template.replace("/*__TRACE__*/", json.dumps(trace).replace("</", "<\\/")), encoding="utf-8")
+    out(f"Run replay page written to {target}")
+    return 0
+
+
+def cmd_playbook(args):
+    p = get_playbook()
+    out(f"{p.name}: {p.description}")
+    for s in p.steps():
+        out(f"    {s.kind:<9} {s.key:<18} {s.role or '':<13} after: {', '.join(s.deps) or '-'}")
+    return 0
+
+
+# ------------------------------------------------------------------ company admin
+def cmd_routines(args):
+    ws = Path(args.workspace)
+    store, company = open_company(ws, name=args.company_name)
+    due = due_routines(store, company["id"])
+    for r in store.all("SELECT * FROM routines WHERE company_id=?", company["id"]):
+        out(f"{r['key']:<26} {r['schedule']:<20} last run: {r['last_run'] or 'never'}  "
+            f"{'DUE' if r['id'] in {d['id'] for d in due} else ''}")
+    if args.run_due:
+        for r in due:
+            engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), log=out,
+                            gate_options=gate_options(args))
+            engine.start_project(r["spec"]["request"], title=r["spec"].get("title"))
+            mark_run(store, r["id"])
+            store.log(company["id"], "routine", "routine.fired", f"routine:{r['key']}")
+            engine.run()
+    return 0
+
+
+def cmd_export(args):
+    store, company = open_company(Path(args.workspace), name=args.company_name)
+    data = export_company(store, company, [agentic_dir(Path(args.workspace)) / "skills"])
+    Path(args.out).write_text(json.dumps(data, indent=2), encoding="utf-8")
+    out(f"Exported {company['name']} to {args.out} (no secrets; review before sharing)")
+    return 0
+
+
+def cmd_import(args):
+    ws = Path(args.workspace)
+    spec = import_company(Path(args.file), agentic_dir(ws) / "skills")
+    company = create_company(Store(db_path(ws)), spec)
+    out(f"Imported {company['name']} into {db_path(ws)}")
+    return 0
+
+
+# ------------------------------------------------------------------ argument parsing
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+
+    def common(p):
+        p.add_argument("-w", "--workspace", default=".", help="Repository / project folder")
+        p.add_argument("--company-name", help="Company to use if the store has several")
+        p.add_argument("--store", help="Shared company database (default <workspace>/.agentic-sdlc/company.db)")
+        p.add_argument("--json", action="store_true", help="Machine-readable output")
+        return p
+
+    def delivery(p):
+        p.add_argument("--company", help="Company spec JSON (default: .agentic-sdlc/company.json or built-in)")
+        p.add_argument("--approver", default="cli",
+                       help="cli | stdin | deferred | auto:<name> | hires:<name> (auto-approve hiring only)")
+        p.add_argument("--max-fix-iterations", type=int, default=3)
+        p.add_argument("--target-org", help="Platform org/environment alias for stacks that validate against one "
+                                            "(e.g. Apex: sf alias; also $SF_TARGET_ORG)")
+        p.add_argument("--min-coverage", type=int, default=75)
+        p.add_argument("--events", action="store_true", help="Stream @@EVENT lines (IDE integrations)")
+        p.add_argument("--title")
+        p.add_argument("--budget", type=float, help="Project budget in USD (default from company spec)")
+        p.add_argument("--clean", action="store_true", help="Delete the workspace first")
+        return p
+
+    p = delivery(common(sub.add_parser("run", help="Start a delivery project")))
+    g = p.add_mutually_exclusive_group(required=True)
+    g.add_argument("--request")
+    g.add_argument("--request-file")
+    p.set_defaults(fn=cmd_run)
+
+    p = delivery(common(sub.add_parser("demo", help="Recorded run of a sample (no API key)")))
+    p.add_argument("--sample", choices=sorted(SAMPLES), default="node")
+    p.set_defaults(fn=cmd_demo, approver="auto:Demo Approver")
+
+    p = delivery(common(sub.add_parser("resume", help="Continue projects after approvals")))
+    p.add_argument("--project", help="Only this project id")
+    p.add_argument("--replay", help="Recording to replay (demos remember theirs automatically)")
+    p.set_defaults(fn=cmd_resume)
+
+    p = delivery(common(sub.add_parser("init", help="Create the company and request hiring approvals")))
+    p.set_defaults(fn=cmd_init, approver="deferred")
+
+    common(sub.add_parser("approvals", help="List pending approvals")).set_defaults(fn=cmd_approvals)
+    p = common(sub.add_parser("approve", help="Approve or reject (id or 'all')"))
+    p.add_argument("id")
+    p.add_argument("--as", dest="as_name", required=True)
+    p.add_argument("--reject", action="store_true")
+    p.add_argument("--comment")
+    p.add_argument("--type", help="With 'all': only this approval type (e.g. hire)")
+    p.set_defaults(fn=cmd_approve)
+
+    common(sub.add_parser("stacks", help="Detected stacks and verification plan")).set_defaults(fn=cmd_stacks)
+    common(sub.add_parser("state", help="Full company state as JSON")).set_defaults(fn=cmd_state)
+    common(sub.add_parser("org", help="Org chart")).set_defaults(fn=cmd_org)
+    common(sub.add_parser("board", help="Projects and tasks")).set_defaults(fn=cmd_board)
+    common(sub.add_parser("budget", help="Spend vs budgets")).set_defaults(fn=cmd_budget)
+    p = common(sub.add_parser("activity", help="Audit trail"))
+    p.add_argument("-n", type=int, default=40)
+    p.set_defaults(fn=cmd_activity)
+    p = common(sub.add_parser("dashboard", help="Write the company dashboard HTML"))
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_dashboard)
+    p = common(sub.add_parser("demo-page", help="Write a step-through replay page for a project trace"))
+    p.add_argument("trace")
+    p.add_argument("--out")
+    p.set_defaults(fn=cmd_demo_page)
+    common(sub.add_parser("playbook", help="Show the delivery playbook")).set_defaults(fn=cmd_playbook)
+
+    p = delivery(common(sub.add_parser("routines", help="List routines; --run-due starts due ones")))
+    p.add_argument("--run-due", action="store_true")
+    p.set_defaults(fn=cmd_routines)
+    p = common(sub.add_parser("export", help="Export the company (no secrets)"))
+    p.add_argument("--out", required=True)
+    p.set_defaults(fn=cmd_export)
+    p = common(sub.add_parser("import", help="Import a company export"))
+    p.add_argument("file")
+    p.set_defaults(fn=cmd_import)
+
+    args = ap.parse_args(argv)
+    global STORE_OVERRIDE
+    STORE_OVERRIDE = args.store
+    return args.fn(args)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

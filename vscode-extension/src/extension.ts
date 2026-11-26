@@ -1,86 +1,149 @@
+/**
+ * Agentic SDLC for VS Code: an AI delivery company inside the IDE, for any technology.
+ *
+ * The extension is a thin client over the bundled orchestrator (orchestrator/agentic.py):
+ *  - Activity-bar views: Org chart, Projects (tasks), Approvals, Stack & verification
+ *  - Live run panel with every agent output, code diffs, gate results and the audit trail
+ *  - Asynchronous governance: runs pause for hiring / release / budget / gateway / escalation approvals;
+ *    you decide in the IDE and the project resumes
+ *  - Problems panel diagnostics from the stack's own verification tools
+ *  - Company dashboard and step-through replay pages for stakeholders
+ */
 import * as vscode from "vscode";
 import * as cp from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-import { EngineRun, RunOptions } from "./runner";
+import { EngineEnv, EngineRun, engineCall, engineJson } from "./runner";
 
 const SECRET_KEY = "agenticSdlc.anthropicApiKey";
-let current: EngineRun | undefined;
-let panel: vscode.WebviewPanel | undefined;
-let panelWorkspace = "";
+const SAMPLES: Record<string, string> = {
+  node: "Node.js: invoice late-fee calculator",
+  python: "Python: promo codes at checkout",
+  salesforce: "Salesforce: Closed Won → onboarding handoff",
+};
+
+let ctx: vscode.ExtensionContext;
 let output: vscode.OutputChannel;
 let diagnostics: vscode.DiagnosticCollection;
 let status: vscode.StatusBarItem;
-let ctx: vscode.ExtensionContext;
-const runEvents: any[] = [];
+let panel: vscode.WebviewPanel | undefined;
+let current: EngineRun | undefined;
+let activeRoot: string | undefined;          // folder whose company/projects the views show
+let state: any = { company: null, agents: [], projects: [], approvals: [] };
+const liveEvents: any[] = [];
+let trees: { company: CompanyTree; projects: ProjectsTree; approvals: ApprovalsTree; stacks: StacksTree };
+let stackInfo: any = { stacks: [], checks: [] };
 
-// ------------------------------------------------------------------ activation
+// ====================================================================== activation
 export function activate(context: vscode.ExtensionContext) {
   ctx = context;
   output = vscode.window.createOutputChannel("Agentic SDLC");
   diagnostics = vscode.languages.createDiagnosticCollection("agentic-sdlc");
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 50);
-  status.command = "agenticSdlc.showPanel";
+  status.command = "agenticSdlc.showRunPanel";
   context.subscriptions.push(output, diagnostics, status);
+
+  trees = { company: new CompanyTree(), projects: new ProjectsTree(), approvals: new ApprovalsTree(),
+            stacks: new StacksTree() };
+  const views = [
+    vscode.window.createTreeView("agenticSdlc.company", { treeDataProvider: trees.company }),
+    vscode.window.createTreeView("agenticSdlc.projects", { treeDataProvider: trees.projects }),
+    vscode.window.createTreeView("agenticSdlc.approvals", { treeDataProvider: trees.approvals }),
+    vscode.window.createTreeView("agenticSdlc.stacks", { treeDataProvider: trees.stacks }),
+  ];
+  context.subscriptions.push(...views);
+  const approvalsView = views[2];
 
   const reg = (id: string, fn: (...a: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
-  reg("agenticSdlc.runStory", () => runFromPrompt());
+  reg("agenticSdlc.runRequest", () => runFromPrompt());
   reg("agenticSdlc.runFile", (uri?: vscode.Uri) => runFromFile(uri));
   reg("agenticSdlc.runSelection", () => runFromSelection());
-  reg("agenticSdlc.runDemo", () => runDemo());
+  reg("agenticSdlc.runDemo", (sample?: string) => runDemo(sample));
+  reg("agenticSdlc.resume", () => resume());
+  reg("agenticSdlc.approve", (item?: ApprovalItem) => decideItem(item, true));
+  reg("agenticSdlc.reject", (item?: ApprovalItem) => decideItem(item, false));
+  reg("agenticSdlc.approveAllHires", () => approveAllHires());
+  reg("agenticSdlc.refresh", () => refreshAll());
+  reg("agenticSdlc.useWorkspace", () => { activeRoot = workspaceRoot(); refreshAll(); });
+  reg("agenticSdlc.showRunPanel", () => ensurePanel().reveal());
+  reg("agenticSdlc.openProject", (item?: ProjectItem) => openProject(item?.project));
+  reg("agenticSdlc.showDashboard", () => showDashboard());
+  reg("agenticSdlc.openReplayPage", (item?: ProjectItem) => openReplayPage(item?.project));
+  reg("agenticSdlc.revealArtifacts", (item?: ProjectItem) => revealArtifacts(item?.project));
+  reg("agenticSdlc.initCompany", () => initCompanyConfig());
   reg("agenticSdlc.setApiKey", () => setApiKey());
   reg("agenticSdlc.clearApiKey", async () => {
-    await context.secrets.delete(SECRET_KEY);
+    await ctx.secrets.delete(SECRET_KEY);
     vscode.window.showInformationMessage("Agentic SDLC: API key removed.");
   });
-  reg("agenticSdlc.openRun", () => openRun());
-  reg("agenticSdlc.exportDemo", (tracePath?: string) => exportDemo(tracePath));
   reg("agenticSdlc.installDependencies", () => installDependencies());
   reg("agenticSdlc.cancel", () => cancelRun());
-  reg("agenticSdlc.showPanel", () => ensurePanel(panelWorkspace).reveal());
+
+  context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
+    activeRoot = workspaceRoot();
+    refreshAll();
+  }));
+  activeRoot = workspaceRoot();
+  void approvalsView;
+  refreshAll();
 }
 
 export function deactivate() {
   current?.cancel();
 }
 
-// ------------------------------------------------------------------ settings & environment
+// ====================================================================== environment
 function cfg<T>(key: string, fallback: T): T {
   return vscode.workspace.getConfiguration("agenticSdlc").get<T>(key, fallback);
 }
 
-const engineDir = () => path.join(ctx.extensionPath, "engine");
-
-function which(cmd: string): boolean {
-  try {
-    cp.execFileSync(cmd, ["--version"], { stdio: "ignore", timeout: 10000 });
-    return true;
-  } catch { return false; }
+function engineDir(): string {
+  return path.join(ctx.extensionPath, "orchestrator");
 }
 
+function canRun(cmd: string): boolean {
+  try { cp.execFileSync(cmd, ["--version"], { stdio: "ignore", timeout: 10000 }); return true; } catch { return false; }
+}
+
+let cachedPython: string | undefined;
 function pythonPath(): string | undefined {
   const configured = cfg<string>("pythonPath", "");
   if (configured) { return configured; }
+  if (cachedPython) { return cachedPython; }
   const candidates = process.platform === "win32" ? ["py", "python", "python3"] : ["python3", "python"];
-  return candidates.find(which);
+  cachedPython = candidates.find(canRun);
+  return cachedPython;
 }
 
-async function apiKey(required: boolean): Promise<string | undefined> {
-  let key = await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY;
-  if (!key && required) {
-    const pick = await vscode.window.showWarningMessage(
-      "Agentic SDLC needs an Anthropic API key to run the agents live.", "Set API key", "Run demo instead");
-    if (pick === "Set API key") { key = await setApiKey(); }
-    if (pick === "Run demo instead") { await runDemo(); return undefined; }
+async function env(withKey: boolean): Promise<EngineEnv | undefined> {
+  const python = pythonPath();
+  if (!python) {
+    vscode.window.showErrorMessage("Agentic SDLC needs Python 3.11+. Install it or set 'agenticSdlc.pythonPath'.");
+    return undefined;
   }
-  return key;
+  return {
+    python, engineDir: engineDir(),
+    apiKey: withKey ? (await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY) : undefined,
+    pmdPath: cfg<string>("pmdPath", "") || undefined,
+    store: cfg<string>("companyStore", "") || undefined,
+    targetOrg: cfg<string>("salesforceTargetOrg", "") || undefined,
+  };
+}
+
+async function requireKey(): Promise<boolean> {
+  if (await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY) { return true; }
+  const pick = await vscode.window.showWarningMessage(
+    "Agentic SDLC needs an Anthropic API key to run the agents live.", "Set API key", "Run a demo instead");
+  if (pick === "Set API key") { return !!(await setApiKey()); }
+  if (pick === "Run a demo instead") { await runDemo(); }
+  return false;
 }
 
 async function setApiKey(): Promise<string | undefined> {
   const key = await vscode.window.showInputBox({
-    title: "Anthropic API key", prompt: "Stored in VS Code SecretStorage (OS keychain), never in settings files.",
+    title: "Anthropic API key", prompt: "Stored in VS Code SecretStorage (your OS keychain), never in settings files.",
     password: true, ignoreFocusOut: true, placeHolder: "sk-ant-...",
     validateInput: v => v.trim().length < 20 ? "That doesn't look like an API key" : undefined,
   });
@@ -99,15 +162,31 @@ function workspaceRoot(): string | undefined {
   return (owner || folders[0]).uri.fsPath;
 }
 
-// ------------------------------------------------------------------ entry points
+function isDemoRoot(root: string): boolean {
+  return fs.existsSync(path.join(root, ".agentic-sdlc", "replay.json"));
+}
+
+function approverName(): string {
+  return cfg<string>("approverName", "") || os.userInfo().username;
+}
+
+function commonRunArgs(): string[] {
+  const a = ["--approver", "deferred", "--events",
+             "--max-fix-iterations", String(cfg<number>("maxFixIterations", 3)),
+             "--min-coverage", String(cfg<number>("minCoverage", 75))];
+  const org = cfg<string>("salesforceTargetOrg", "");
+  if (org) { a.push("--target-org", org); }
+  return a;
+}
+
+// ====================================================================== entry points
 async function runFromPrompt() {
   const story = await vscode.window.showInputBox({
     title: "Business request for the agent team",
-    prompt: "Describe the Salesforce change (or use 'Run on file' / 'Run on selection' for longer requests).",
-    ignoreFocusOut: true,
-    placeHolder: "When an Opportunity is Closed Won, create an onboarding Case for the Account…",
+    prompt: "Describe the change. The stack is detected from this repository. For long requests use 'Run on file'.",
+    ignoreFocusOut: true, placeHolder: "Customers who pay late should be charged the late fee in our terms…",
   });
-  if (story?.trim()) { await startRun(story.trim()); }
+  if (story?.trim()) { await startProject(story.trim()); }
 }
 
 async function runFromFile(uri?: vscode.Uri) {
@@ -115,27 +194,49 @@ async function runFromFile(uri?: vscode.Uri) {
   if (!target) { return vscode.window.showErrorMessage("Open or select a .md/.txt file with the business request."); }
   const text = (await vscode.workspace.fs.readFile(target)).toString();
   if (!text.trim()) { return vscode.window.showErrorMessage("That file is empty."); }
-  await startRun(text);
+  await startProject(text);
 }
 
 async function runFromSelection() {
   const ed = vscode.window.activeTextEditor;
   const text = ed && ed.document.getText(ed.selection);
   if (!text?.trim()) { return vscode.window.showErrorMessage("Select the business request text first."); }
-  await startRun(text);
+  await startProject(text);
 }
 
-async function runDemo() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-sdlc-demo-"));
-  const story = fs.readFileSync(path.join(engineDir(), "samples", "closed_won_onboarding_story.md"), "utf8");
-  await startRun(story, {
-    workspace: dir,
-    replayFile: path.join(engineDir(), "samples", "demo_recording.json"),
-    demo: true,
-  });
+async function runDemo(sample?: string) {
+  if (!sample) {
+    const pick = await vscode.window.showQuickPick(
+      Object.entries(SAMPLES).map(([k, v]) => ({ label: v, sample: k,
+        description: "recorded agents, real verification, no API key" })),
+      { title: "Agentic SDLC demo: pick a stack. The same playbook runs all of them." });
+    sample = pick?.sample;
+  }
+  if (!sample) { return; }
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `agentic-demo-${sample}-`));
+  await launch(["demo", "--sample", sample, "-w", dir, ...commonRunArgs()], dir,
+    { story: `Demo: ${SAMPLES[sample]}`, title: SAMPLES[sample], mode: "replay", fresh: true });
 }
 
-// ------------------------------------------------------------------ git safety
+async function startProject(story: string) {
+  const root = workspaceRoot();
+  if (!root) { return vscode.window.showErrorMessage("Open the repository folder you want the agents to work on."); }
+  if (!(await requireKey())) { return; }
+  const branch = await prepareGitBranch(root, story);
+  if (branch === false) { return; }
+  const storyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agentic-request-")), "request.md");
+  fs.writeFileSync(storyFile, story, "utf8");
+  await launch(["run", "--request-file", storyFile, "-w", root, ...commonRunArgs()], root,
+    { story, mode: "live", branch: branch || undefined, fresh: true });
+}
+
+async function resume(root = activeRoot) {
+  if (!root) { return; }
+  if (!isDemoRoot(root) && !(await requireKey())) { return; }
+  await launch(["resume", "-w", root, ...commonRunArgs()], root, { mode: isDemoRoot(root) ? "replay" : "live", fresh: false });
+}
+
+// ====================================================================== git safety
 function git(cwd: string, args: string[]): string {
   return cp.execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
@@ -143,8 +244,7 @@ function git(cwd: string, args: string[]): string {
 async function prepareGitBranch(root: string, story: string): Promise<string | undefined | false> {
   if (!cfg<boolean>("createGitBranch", true)) { return undefined; }
   try { git(root, ["rev-parse", "--is-inside-work-tree"]); } catch { return undefined; }
-  const dirty = git(root, ["status", "--porcelain"]);
-  if (dirty) {
+  if (git(root, ["status", "--porcelain"])) {
     const go = await vscode.window.showWarningMessage(
       "You have uncommitted changes. The agents' changes will be mixed with yours on the new branch.",
       { modal: true }, "Continue anyway");
@@ -162,117 +262,90 @@ async function prepareGitBranch(root: string, story: string): Promise<string | u
   }
 }
 
-// ------------------------------------------------------------------ run orchestration
-interface StartOptions { workspace?: string; replayFile?: string; demo?: boolean; }
+// ====================================================================== runs
+interface LaunchInfo { story?: string; title?: string; mode: "live" | "replay"; branch?: string; fresh: boolean; }
 
-async function startRun(story: string, opts: StartOptions = {}) {
+async function launch(args: string[], root: string, info: LaunchInfo) {
   if (current?.isRunning) {
     const pick = await vscode.window.showWarningMessage("A run is already in progress.", "Show it", "Cancel it");
-    if (pick === "Show it") { ensurePanel(panelWorkspace).reveal(); }
+    if (pick === "Show it") { ensurePanel().reveal(); }
     if (pick === "Cancel it") { cancelRun(); }
     return;
   }
-  const python = pythonPath();
-  if (!python) {
-    return vscode.window.showErrorMessage("Python 3.11+ not found. Install it or set 'agenticSdlc.pythonPath'.");
-  }
-  const root = opts.workspace || workspaceRoot();
-  if (!root) { return vscode.window.showErrorMessage("Open your Salesforce (SFDX) project folder first."); }
-
-  let key: string | undefined;
-  let branch: string | undefined | false;
-  if (!opts.replayFile) {
-    if (!fs.existsSync(path.join(root, "sfdx-project.json"))) {
-      const go = await vscode.window.showWarningMessage(
-        "This folder is not an SFDX project (no sfdx-project.json). Create a new SFDX project here?",
-        { modal: true }, "Create and continue");
-      if (go !== "Create and continue") { return; }
-    }
-    key = await apiKey(true);
-    if (!key) { return; }
-    branch = await prepareGitBranch(root, story);
-    if (branch === false) { return; }
-  }
-
-  const storyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agentic-story-")), "story.md");
-  fs.writeFileSync(storyFile, story, "utf8");
-  const recordDir = path.join(root, ".agentic-sdlc", "recordings");
-  const recordFile = cfg<boolean>("recordRuns", false) && !opts.replayFile
-    ? (fs.mkdirSync(recordDir, { recursive: true }), path.join(recordDir, `${Date.now()}.json`)) : undefined;
-
-  const runOpts: RunOptions = {
-    python, engineDir: engineDir(), workspace: root, story, apiKey: key,
-    model: cfg<string>("model", "") || undefined,
-    targetOrg: opts.replayFile ? undefined : (cfg<string>("targetOrg", "") || undefined),
-    minCoverage: cfg<number>("minCoverage", 75),
-    maxFixIterations: cfg<number>("maxFixIterations", 3),
-    pmdPath: cfg<string>("pmdPath", "") || undefined,
-    replayFile: opts.replayFile, recordFile,
-  };
-
-  runEvents.length = 0;
+  const e = await env(info.mode === "live");
+  if (!e) { return; }
+  activeRoot = root;
   diagnostics.clear();
-  panelWorkspace = root;
-  const p = ensurePanel(root);
+  const p = ensurePanel();
   p.reveal(vscode.ViewColumn.Beside, true);
-  post({ type: "reset", story, mode: opts.replayFile ? "replay" : "live", branch: branch || null,
-         workspace: root, demo: !!opts.demo });
-  output.appendLine(`\n=== Run started in ${root}${opts.replayFile ? " (recorded demo)" : ""} ===`);
-  setStatus("$(sync~spin) Agentic SDLC: starting…");
+  if (info.fresh) {
+    liveEvents.length = 0;
+    post({ type: "reset", story: info.story, title: info.title, mode: info.mode, branch: info.branch });
+  } else {
+    post({ type: "continue" });
+  }
+  post({ type: "approvals", items: [] });
+  output.appendLine(`\n=== agentic.py ${args.join(" ")} ===`);
+  setStatus("$(sync~spin) Agentic SDLC: agents working…");
 
-  current = new EngineRun(runOpts, {
+  let finished: any;
+  current = new EngineRun(e, {
     onLog: line => output.appendLine(line),
-    onEvent: ev => handleEvent(ev, root),
-    onApprovalRequest: c => requestApproval(c),
-    onExit: code => {
-      output.appendLine(`=== Engine exited (${code}) ===`);
-      if (code !== 0 && !runEvents.some(e => e.kind === "finished")) {
-        post({ type: "event", ev: { kind: "error", message: `Engine exited with code ${code}. See Output › Agentic SDLC.` } });
+    onEvent: ev => {
+      if (ev.kind === "finished") { finished = ev; }
+      handleEvent(ev, root);
+    },
+    onExit: async code => {
+      output.appendLine(`=== exit ${code} ===`);
+      await refreshAll();
+      if (!finished && code !== 0) {
+        post({ type: "event", ev: { kind: "error", message: `The orchestrator stopped (exit ${code}). See Output › Agentic SDLC.` } });
         setStatus("$(error) Agentic SDLC: failed", 15000);
+        return;
       }
+      await afterRun(root, finished?.status);
     },
   });
-  current.start(storyFile);
+  current.start(args);
 }
 
 function handleEvent(ev: any, root: string) {
-  runEvents.push(ev);
+  liveEvents.push(ev);
   post({ type: "event", ev });
-  switch (ev.kind) {
-    case "agent":
-      setStatus(`$(sync~spin) Agentic SDLC: ${ev.agent_name} done`);
-      break;
-    case "tool":
-      setStatus(`$(sync~spin) Agentic SDLC: ${ev.tool_name?.split(" (")[0]}: ${ev.summary}`);
-      if (ev.tool === "static_analysis") { publishDiagnostics(ev, root); }
-      break;
-    case "route":
-      setStatus(`$(sync~spin) Agentic SDLC: fixing (iteration ${ev.iteration})`);
-      break;
-    case "finished": {
-      const ok = ev.status === "released";
-      setStatus(ok ? "$(check) Agentic SDLC: ready for review" : `$(warning) Agentic SDLC: ${ev.status}`, 30000);
-      const traceAbs = path.join(root, ev.trace);
-      const actions = ok ? ["Review changes", "Open release notes", "Export client demo"] : ["Show run"];
-      vscode.window.showInformationMessage(
-        ok ? "Agentic SDLC: change is built, verified and approved. Review the diff before you commit."
-           : `Agentic SDLC: run ${ev.status}. See the run panel for details.`, ...actions)
-        .then(async pick => {
-          if (pick === "Review changes") { await vscode.commands.executeCommand("workbench.view.scm"); }
-          if (pick === "Open release notes") {
-            const notes = path.join(path.dirname(traceAbs), "RELEASE_NOTES.md");
-            if (fs.existsSync(notes)) { await vscode.commands.executeCommand("markdown.showPreview", vscode.Uri.file(notes)); }
-          }
-          if (pick === "Export client demo") { await exportDemo(traceAbs); }
-          if (pick === "Show run") { ensurePanel(root).reveal(); }
-        });
-      break;
-    }
-    case "error":
-      vscode.window.showErrorMessage(`Agentic SDLC: ${ev.message}`);
-      break;
-    default:
-      if (ev.kind === "plan") { setStatus("$(sync~spin) Agentic SDLC: agents working…"); }
+  if (ev.kind === "agent") { setStatus(`$(sync~spin) Agentic SDLC: ${ev.agent_name} finished`); }
+  if (ev.kind === "tool") {
+    setStatus(`$(sync~spin) Agentic SDLC: ${String(ev.tool_name || "").split(" (")[0]}: ${ev.passed ? "passed" : ev.skipped ? "skipped" : "failed"}`);
+    if (ev.tool === "verify") { publishDiagnostics(ev, root); }
+  }
+  if (ev.kind === "route") { setStatus(`$(sync~spin) Agentic SDLC: ${ev.to_name} fixing (iteration ${ev.iteration})`); }
+  if (ev.kind === "plan") { void refreshAll(); }
+  if (ev.kind === "error") { vscode.window.showErrorMessage(`Agentic SDLC: ${ev.message}`); }
+}
+
+async function afterRun(root: string, status?: string) {
+  const pending = state.approvals.filter((a: any) => a.status === "pending");
+  post({ type: "approvals", items: pending });
+  if (status === "released") {
+    setStatus("$(check) Agentic SDLC: ready for review", 30000);
+    const pick = await vscode.window.showInformationMessage(
+      "Agentic SDLC: the change is built, verified and approved. Review the diff before you commit.",
+      "Review changes", "Company dashboard", "Replay page");
+    if (pick === "Review changes") { await vscode.commands.executeCommand("workbench.view.scm"); }
+    if (pick === "Company dashboard") { await showDashboard(); }
+    if (pick === "Replay page") { await openReplayPage(state.projects[0]); }
+  } else if (pending.length) {
+    setStatus(`$(bell) Agentic SDLC: ${pending.length} approval(s) waiting`);
+    const hires = pending.filter((a: any) => a.type === "hire");
+    const actions = hires.length ? ["Approve all hires", "Review"] : ["Review"];
+    const msg = hires.length && hires.length === pending.length
+      ? `Agentic SDLC: ${hires.length} agent(s) are waiting to be hired before work can start.`
+      : `Agentic SDLC: ${pending.length} decision(s) waiting for you (${[...new Set(pending.map((a: any) => a.type))].join(", ")}).`;
+    const pick = await vscode.window.showInformationMessage(msg, ...actions);
+    if (pick === "Approve all hires") { await approveAllHires(); }
+    if (pick === "Review") { ensurePanel().reveal(); await vscode.commands.executeCommand("agenticSdlc.approvals.focus"); }
+  } else if (status) {
+    setStatus(`$(warning) Agentic SDLC: ${status}`, 30000);
+    vscode.window.showWarningMessage(`Agentic SDLC: project ${status}. See the run panel.`);
   }
 }
 
@@ -280,13 +353,11 @@ function publishDiagnostics(ev: any, root: string) {
   diagnostics.clear();
   const byFile = new Map<string, vscode.Diagnostic[]>();
   for (const v of ev.violations || []) {
+    if (!v.file) { continue; }
     const line = Math.max(0, (v.line || 1) - 1);
-    const endLine = Math.max(line, (v.end_line || v.line || 1) - 1);
-    const d = new vscode.Diagnostic(new vscode.Range(line, 0, endLine, Number.MAX_SAFE_INTEGER),
-      v.message, (v.priority ?? 3) <= 2 || /Loop|CRUD|Sharing|Injection/.test(v.rule)
-        ? vscode.DiagnosticSeverity.Error : vscode.DiagnosticSeverity.Warning);
-    d.source = v.engine === "pmd" ? "Agentic SDLC · PMD" : "Agentic SDLC · metadata";
-    d.code = v.rule;
+    const d = new vscode.Diagnostic(new vscode.Range(line, 0, Math.max(line, (v.end_line || v.line || 1) - 1), 10000),
+      `${v.rule}: ${v.message}`, vscode.DiagnosticSeverity.Error);
+    d.source = `Agentic SDLC · ${v.engine || "verify"}`;
     const list = byFile.get(v.file) || [];
     list.push(d);
     byFile.set(v.file, list);
@@ -294,50 +365,229 @@ function publishDiagnostics(ev: any, root: string) {
   for (const [file, list] of byFile) { diagnostics.set(vscode.Uri.file(path.join(root, file)), list); }
 }
 
-async function requestApproval(c: any) {
-  post({ type: "approval", ctx: c });
-  setStatus("$(bell) Agentic SDLC: approval needed");
-  const findings = (c.findings || []).length;
-  const pick = await vscode.window.showWarningMessage(
-    `Release approval needed. Review: ${c.review}, Security: ${c.security}, ${findings} finding(s). Gates: ${c.gates}`,
-    "Approve", "Reject", "Review in panel");
-  if (pick === "Review in panel") { ensurePanel(panelWorkspace).reveal(); return; }
-  if (pick === "Approve" || pick === "Reject") {
-    const comment = await vscode.window.showInputBox({ prompt: `${pick} comment (optional)`, ignoreFocusOut: true });
-    decide(pick === "Approve", comment || "");
-  }
-}
-
-function approverName(): string {
-  return cfg<string>("approverName", "") || os.userInfo().username;
-}
-
-function decide(approved: boolean, comment: string) {
-  if (current?.respond({ approved, approver: approverName(), comment })) {
-    post({ type: "approvalDone" });
-    setStatus(`$(sync~spin) Agentic SDLC: ${approved ? "approved, preparing release" : "rejected"}`);
-  }
-}
-
 function cancelRun() {
   if (current?.isRunning) {
     current.cancel();
-    post({ type: "event", ev: { kind: "error", message: "Run cancelled by user." } });
+    post({ type: "event", ev: { kind: "error", message: "Run cancelled. Resume it any time from the Projects view." } });
     setStatus("$(circle-slash) Agentic SDLC: cancelled", 10000);
   }
 }
 
 function setStatus(text: string, hideAfterMs?: number) {
   status.text = text;
-  status.tooltip = "Agentic SDLC – click to show the run panel";
+  status.tooltip = "Agentic SDLC: show the run panel";
   status.show();
   if (hideAfterMs) { setTimeout(() => { if (status.text === text) { status.hide(); } }, hideAfterMs); }
 }
 
-// ------------------------------------------------------------------ webview panel
+// ====================================================================== approvals
+async function decide(id: string, approved: boolean, comment?: string) {
+  const root = activeRoot;
+  const e = await env(false);
+  if (!root || !e) { return; }
+  if (comment === undefined) {
+    comment = await vscode.window.showInputBox({
+      prompt: approved ? "Approval comment (optional)" : "Why are you rejecting? (recorded in the audit trail)",
+      ignoreFocusOut: true }) ?? undefined;
+    if (comment === undefined && !approved) { return; }
+  }
+  const args = ["approve", id, "--as", approverName(), "-w", root];
+  if (!approved) { args.push("--reject"); }
+  if (comment) { args.push("--comment", comment); }
+  const r = await engineCall(e, args);
+  if (r.code !== 0) { return vscode.window.showErrorMessage(`Agentic SDLC: could not record the decision: ${r.stderr.slice(-300)}`); }
+  await afterDecision(root);
+}
+
+async function decideItem(item: ApprovalItem | undefined, approved: boolean) {
+  if (item) { await decide(item.approval.id, approved); }
+}
+
+async function approveAllHires() {
+  const root = activeRoot;
+  const e = await env(false);
+  if (!root || !e) { return; }
+  const r = await engineCall(e, ["approve", "all", "--type", "hire", "--as", approverName(), "--comment",
+                                 "Hiring approved in VS Code", "-w", root]);
+  if (r.code !== 0) { return vscode.window.showErrorMessage(`Agentic SDLC: ${r.stderr.slice(-300)}`); }
+  await afterDecision(root);
+}
+
+async function afterDecision(root: string) {
+  await refreshAll();
+  const pending = state.approvals.filter((a: any) => a.status === "pending");
+  post({ type: "approvals", items: pending });
+  const open = state.projects.some((p: any) => !["released", "rejected"].includes(p.status));
+  if (!pending.length && open && cfg<boolean>("autoResume", true)) { await resume(root); }
+  else if (!pending.length && open) {
+    const pick = await vscode.window.showInformationMessage("All decisions recorded.", "Resume project");
+    if (pick) { await resume(root); }
+  }
+}
+
+// ====================================================================== state & views
+async function refreshAll() {
+  const root = activeRoot;
+  const e = await env(false);
+  if (!root || !e) {
+    state = { company: null, agents: [], projects: [], approvals: [] };
+  } else {
+    try { state = await engineJson(e, ["state", "-w", root]); } catch (err: any) {
+      output.appendLine(`state: ${err.message}`);
+    }
+    try { stackInfo = await engineJson(e, ["stacks", "-w", root]); } catch (err: any) {
+      output.appendLine(`stacks: ${err.message}`);
+    }
+  }
+  vscode.commands.executeCommand("setContext", "agenticSdlc.hasCompany", !!state.company);
+  vscode.commands.executeCommand("setContext", "agenticSdlc.pendingApprovals",
+    state.approvals.filter((a: any) => a.status === "pending").length);
+  Object.values(trees).forEach(t => t.refresh());
+}
+
+const STATUS_ICON: Record<string, [string, string?]> = {
+  done: ["pass-filled", "testing.iconPassed"], in_progress: ["sync~spin"], todo: ["circle-large-outline"],
+  blocked: ["bell", "list.warningForeground"], cancelled: ["circle-slash", "disabledForeground"],
+  failed: ["error", "testing.iconFailed"], released: ["rocket", "testing.iconPassed"],
+  waiting_approval: ["bell", "list.warningForeground"], escalated: ["warning", "list.errorForeground"],
+  rejected: ["circle-slash"], running: ["sync~spin"], queued: ["clock"],
+};
+
+function icon(key: string): vscode.ThemeIcon {
+  const [id, color] = STATUS_ICON[key] || ["circle-outline"];
+  return new vscode.ThemeIcon(id, color ? new vscode.ThemeColor(color) : undefined);
+}
+
+abstract class BaseTree<T extends vscode.TreeItem> implements vscode.TreeDataProvider<T> {
+  private emitter = new vscode.EventEmitter<T | undefined>();
+  readonly onDidChangeTreeData = this.emitter.event;
+  refresh() { this.emitter.fire(undefined); }
+  getTreeItem(el: T) { return el; }
+  abstract getChildren(el?: T): T[];
+}
+
+class InfoItem extends vscode.TreeItem {
+  constructor(label: string, description?: string, iconId?: string, tooltip?: string) {
+    super(label, vscode.TreeItemCollapsibleState.None);
+    this.description = description;
+    if (iconId) { this.iconPath = new vscode.ThemeIcon(iconId); }
+    this.tooltip = tooltip;
+  }
+}
+
+class AgentItem extends vscode.TreeItem {
+  constructor(public readonly agent: any, hasChildren: boolean) {
+    super(agent.name, hasChildren ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None);
+    const human = agent.adapter?.type === "human";
+    const budget = agent.budget_usd ? ` · $${agent.spent_usd.toFixed(4)} / $${agent.budget_usd}` : "";
+    this.description = `${agent.status.replace("_", " ")}${budget}`;
+    this.iconPath = new vscode.ThemeIcon(human ? "account" : "hubot",
+      new vscode.ThemeColor(agent.status === "active" ? "testing.iconPassed" :
+        agent.status === "paused" ? "list.warningForeground" : "disabledForeground"));
+    this.tooltip = new vscode.MarkdownString(`**${agent.name}**: ${agent.title}\n\n` +
+      (human ? "Human" : `Adapter: \`${agent.adapter?.type}\`${agent.adapter?.model ? ` · model \`${agent.adapter.model}\`` : ""}`) +
+      (agent.skills?.length ? `\n\nSkills: ${agent.skills.join(", ")}` : ""));
+    this.contextValue = "agent";
+  }
+}
+
+class CompanyTree extends BaseTree<vscode.TreeItem> {
+  getChildren(el?: vscode.TreeItem): vscode.TreeItem[] {
+    if (!state.company) { return []; }
+    const kids = (key: string | null) => state.agents.filter((a: any) => (a.reports_to || null) === key)
+      .map((a: any) => new AgentItem(a, state.agents.some((b: any) => b.reports_to === a.key)));
+    if (!el) {
+      const s = state.spend || {};
+      const head = new InfoItem(state.company.name,
+        `$${(s.total_usd || 0).toFixed(4)}${s.limit_usd ? ` of $${s.limit_usd}` : ""}${s.estimated ? " (est.)" : ""}`,
+        "organization", state.company.mission);
+      return [head, ...kids(null)];
+    }
+    return el instanceof AgentItem ? kids(el.agent.key) : [];
+  }
+}
+
+class ProjectItem extends vscode.TreeItem {
+  constructor(public readonly project: any) {
+    super(project.title, vscode.TreeItemCollapsibleState.Collapsed);
+    this.description = `${project.status.replace("_", " ")}${project.stacks?.length ? " · " + project.stacks.join(", ") : ""}`;
+    this.iconPath = icon(project.status);
+    this.contextValue = project.trace ? "project.withTrace" : "project";
+    this.tooltip = new vscode.MarkdownString(`**${project.title}**\n\nStatus: ${project.status}\n\nStacks: ${
+      project.stacks?.join(", ") || "not detected yet"}\n\nSpend: $${project.spent_usd}${project.budget_usd ? ` of $${project.budget_usd}` : ""}`);
+    this.command = { command: "agenticSdlc.openProject", title: "Open", arguments: [this] };
+  }
+}
+
+class TaskItem extends vscode.TreeItem {
+  constructor(t: any) {
+    super(t.title, vscode.TreeItemCollapsibleState.None);
+    this.description = `${t.assignee}${t.attempts ? ` · attempt ${t.attempts}` : ""}`;
+    this.iconPath = icon(t.status);
+    this.tooltip = new vscode.MarkdownString(`**${t.title}** (${t.kind})\n\n${t.status}${t.blocked_reason ? `: ${t.blocked_reason}` : ""}\n\n${t.summary || ""}`);
+  }
+}
+
+class ProjectsTree extends BaseTree<vscode.TreeItem> {
+  getChildren(el?: vscode.TreeItem): vscode.TreeItem[] {
+    if (!el) { return (state.projects || []).map((p: any) => new ProjectItem(p)); }
+    return el instanceof ProjectItem ? el.project.tasks.map((t: any) => new TaskItem(t)) : [];
+  }
+}
+
+class ApprovalItem extends vscode.TreeItem {
+  constructor(public readonly approval: any) {
+    super(approval.subject, vscode.TreeItemCollapsibleState.None);
+    const pending = approval.status === "pending";
+    this.description = pending ? approval.type.replace("_", " ") :
+      `${approval.status} by ${approval.decided_by}${approval.comment ? `: ${approval.comment}` : ""}`;
+    this.iconPath = pending ? new vscode.ThemeIcon("bell", new vscode.ThemeColor("list.warningForeground"))
+      : new vscode.ThemeIcon(approval.status === "approved" ? "check" : "close");
+    this.contextValue = pending ? "approval.pending" : "approval.decided";
+    const p = approval.payload || {};
+    this.tooltip = new vscode.MarkdownString(`**${approval.subject}**\n\n` + Object.entries(p)
+      .filter(([, v]) => v !== null && v !== "" && !(Array.isArray(v) && !v.length))
+      .map(([k, v]) => `- ${k}: ${typeof v === "object" ? "`" + JSON.stringify(v).slice(0, 200) + "`" : v}`).join("\n"));
+  }
+}
+
+class ApprovalsTree extends BaseTree<vscode.TreeItem> {
+  getChildren(el?: vscode.TreeItem): vscode.TreeItem[] {
+    if (el) { return []; }
+    const all = state.approvals || [];
+    const pending = all.filter((a: any) => a.status === "pending").map((a: any) => new ApprovalItem(a));
+    const recent = all.filter((a: any) => a.status !== "pending").slice(0, 10).map((a: any) => new ApprovalItem(a));
+    return [...pending, ...(recent.length ? [new InfoItem("Recent decisions", "", "history"), ...recent] : [])];
+  }
+}
+
+class StacksTree extends BaseTree<vscode.TreeItem> {
+  getChildren(el?: vscode.TreeItem): vscode.TreeItem[] {
+    if (el) { return []; }
+    const items: vscode.TreeItem[] = [];
+    const root = activeRoot ? path.basename(activeRoot) : "no folder";
+    items.push(new InfoItem(root, isDemoRoot(activeRoot || "") ? "demo workspace" : "workspace", "folder",
+      activeRoot));
+    if (!stackInfo.stacks?.length) {
+      items.push(new InfoItem("Greenfield", "the architect will choose the stack", "sparkle",
+        "No stack detected yet. Detection runs again after the agents build."));
+    }
+    for (const s of stackInfo.stacks || []) {
+      items.push(new InfoItem(s.name, s.evidence.join(", "), "layers", s.skill ? `Stack skill: ${s.skill}` : undefined));
+    }
+    for (const c of stackInfo.checks || []) {
+      const it = new InfoItem(c.name, `${c.kind} · ${c.blocking ? "blocking" : "advisory"}${c.installed ? "" : " · not installed"}`,
+        c.installed ? "beaker" : "warning", c.command);
+      items.push(it);
+    }
+    return items;
+  }
+}
+
+// ====================================================================== panel, dashboard, replay
 function post(msg: any) { panel?.webview.postMessage(msg); }
 
-function ensurePanel(root: string): vscode.WebviewPanel {
+function ensurePanel(): vscode.WebviewPanel {
   if (panel) { return panel; }
   panel = vscode.window.createWebviewPanel("agenticSdlcRun", "Agentic SDLC", vscode.ViewColumn.Beside, {
     enableScripts: true, retainContextWhenHidden: true,
@@ -349,77 +599,82 @@ function ensurePanel(root: string): vscode.WebviewPanel {
     .replace(/{{NONCE}}/g, nonce).replace(/{{CSP_SOURCE}}/g, panel.webview.cspSource);
   panel.onDidDispose(() => { panel = undefined; });
   panel.webview.onDidReceiveMessage(async msg => {
-    const base = panelWorkspace || root;
     switch (msg.type) {
       case "ready":
-        if (runEvents.length) { post({ type: "replayEvents", events: runEvents }); }
+        if (liveEvents.length) { post({ type: "replayEvents", events: liveEvents }); }
+        post({ type: "approvals", items: (state.approvals || []).filter((a: any) => a.status === "pending") });
         break;
-      case "approve": decide(!!msg.approved, msg.comment || ""); break;
+      case "decide": await decide(msg.id, !!msg.approved, msg.comment || ""); break;
+      case "approveHires": await approveAllHires(); break;
       case "cancel": cancelRun(); break;
       case "openFile": {
-        const abs = path.isAbsolute(msg.path) ? msg.path : path.join(base, msg.path);
+        const abs = path.isAbsolute(msg.path) ? msg.path : path.join(activeRoot || "", msg.path);
         if (fs.existsSync(abs)) {
-          const doc = await vscode.workspace.openTextDocument(abs);
-          await vscode.window.showTextDocument(doc, { viewColumn: vscode.ViewColumn.One, preview: false });
+          await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(abs),
+            { viewColumn: vscode.ViewColumn.One, preview: false });
         } else { vscode.window.showWarningMessage(`File not found: ${abs}`); }
         break;
       }
-      case "exportDemo": {
-        const fin = [...runEvents].reverse().find(e => e.kind === "finished");
-        await exportDemo(fin ? path.join(base, fin.trace) : undefined);
-        break;
-      }
+      case "exportDemo": await openReplayPage(state.projects?.[0]); break;
       case "reviewChanges": await vscode.commands.executeCommand("workbench.view.scm"); break;
     }
   });
   return panel;
 }
 
-// ------------------------------------------------------------------ past runs & demo export
-async function pickTrace(): Promise<string | undefined> {
-  const found = await vscode.workspace.findFiles(".agentic-sdlc/runs/*/trace.json", undefined, 50);
-  if (!found.length) {
-    const pick = await vscode.window.showOpenDialog({ filters: { "Run trace": ["json"] }, canSelectMany: false });
-    return pick?.[0]?.fsPath;
+async function openProject(project?: any) {
+  if (!project) { return; }
+  const p = ensurePanel();
+  p.reveal();
+  if (project.trace && fs.existsSync(project.trace)) {
+    const trace = JSON.parse(fs.readFileSync(project.trace, "utf8"));
+    liveEvents.length = 0;
+    liveEvents.push(...trace.events);
+    post({ type: "loadTrace", trace });
   }
-  const items = found.map(u => {
-    let label = path.basename(path.dirname(u.fsPath)); let detail = "";
-    try {
-      const t = JSON.parse(fs.readFileSync(u.fsPath, "utf8"));
-      label = `${t.status?.toUpperCase() || "?"} · run ${t.run_id}`;
-      detail = `${t.started} · ${(t.story || "").replace(/\s+/g, " ").slice(0, 100)}`;
-    } catch { /* ignore */ }
-    return { label, detail, fsPath: u.fsPath };
-  }).sort((a, b) => b.detail.localeCompare(a.detail));
-  return (await vscode.window.showQuickPick(items, { title: "Agentic SDLC runs" }))?.fsPath;
+  post({ type: "approvals", items: (state.approvals || []).filter((a: any) => a.status === "pending") });
 }
 
-async function openRun() {
-  const tracePath = await pickTrace();
-  if (!tracePath) { return; }
-  const trace = JSON.parse(fs.readFileSync(tracePath, "utf8"));
-  const root = trace.workspace && fs.existsSync(trace.workspace) ? trace.workspace : (workspaceRoot() || "");
-  runEvents.length = 0;
-  runEvents.push(...trace.events, { kind: "finished", status: trace.status, run_id: trace.run_id,
-    trace: path.relative(root, tracePath) });
-  panelWorkspace = root;
-  ensurePanel(root).reveal();
-  post({ type: "loadTrace", trace });
+async function showDashboard() {
+  const root = activeRoot;
+  const e = await env(false);
+  if (!root || !e || !state.company) { return vscode.window.showInformationMessage("No company yet. Run a request or a demo first."); }
+  const out = path.join(os.tmpdir(), `agentic-dashboard-${Date.now()}.html`);
+  const r = await engineCall(e, ["dashboard", "-w", root, "--out", out]);
+  if (r.code !== 0) { return vscode.window.showErrorMessage(`Dashboard failed: ${r.stderr.slice(-300)}`); }
+  const view = vscode.window.createWebviewPanel("agenticSdlcDashboard", `Company: ${state.company.name}`,
+    vscode.ViewColumn.Active, { enableScripts: false });
+  view.webview.html = fs.readFileSync(out, "utf8").replace("<head>",
+    `<head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:;">`);
 }
 
-async function exportDemo(tracePath?: string) {
-  tracePath = tracePath || await pickTrace();
-  if (!tracePath) { return; }
-  const python = pythonPath();
-  if (!python) { return vscode.window.showErrorMessage("Python not found."); }
-  const out = path.join(path.dirname(tracePath), "client_demo.html");
-  try {
-    cp.execFileSync(python, [path.join(engineDir(), "demo", "build_demo.py"), tracePath, out], { cwd: engineDir() });
-  } catch (e: any) { return vscode.window.showErrorMessage(`Export failed: ${e.message}`); }
-  const pick = await vscode.window.showInformationMessage(
-    `Client demo page saved: ${out}`, "Open in browser", "Reveal file");
+async function openReplayPage(project?: any) {
+  const e = await env(false);
+  if (!e || !project?.trace) { return vscode.window.showInformationMessage("This project has no trace yet."); }
+  const out = path.join(path.dirname(project.trace), "run_replay.html");
+  const r = await engineCall(e, ["demo-page", project.trace, "--out", out]);
+  if (r.code !== 0) { return vscode.window.showErrorMessage(`Replay page failed: ${r.stderr.slice(-300)}`); }
+  const pick = await vscode.window.showInformationMessage(`Replay page saved: ${out}`, "Open in browser", "Reveal file");
   if (pick === "Open in browser") { await vscode.env.openExternal(vscode.Uri.file(out)); }
   if (pick === "Reveal file") { await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(out)); }
+}
+
+async function revealArtifacts(project?: any) {
+  if (project?.trace) { await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(project.trace)); }
+}
+
+async function initCompanyConfig() {
+  const root = workspaceRoot();
+  if (!root) { return vscode.window.showErrorMessage("Open a folder first."); }
+  const target = path.join(root, ".agentic-sdlc", "company.json");
+  if (!fs.existsSync(target)) {
+    fs.mkdirSync(path.dirname(target), { recursive: true });
+    fs.copyFileSync(path.join(engineDir(), "companies", "default-company.json"), target);
+  }
+  await vscode.window.showTextDocument(await vscode.workspace.openTextDocument(target));
+  vscode.window.showInformationMessage(
+    "Edit your company: org chart, adapters and models per seat, budgets, governance and gateway rules, routines. "
+    + "It's used for the next run in this repository.");
 }
 
 async function installDependencies() {
@@ -428,10 +683,7 @@ async function installDependencies() {
   const term = vscode.window.createTerminal("Agentic SDLC setup");
   term.show();
   term.sendText(`"${python}" -m pip install -r "${path.join(engineDir(), "requirements.txt")}"`);
-  const pmd = cfg<string>("pmdPath", "") || (which("pmd") ? "pmd" : "");
-  if (!pmd) {
-    vscode.window.showInformationMessage(
-      "Also install PMD 7 (needs Java 17+) for the Apex static-analysis gate, then set 'agenticSdlc.pmdPath' if it is not on PATH.",
-      "PMD download page").then(p => p && vscode.env.openExternal(vscode.Uri.parse("https://pmd.github.io/")));
-  }
+  vscode.window.showInformationMessage(
+    "Verification uses each stack's own tools (npm, mvn/gradle, dotnet, pytest, go, cargo, PMD for Apex…). "
+    + "Missing tools are reported as skipped. The Stack view shows what's installed.");
 }

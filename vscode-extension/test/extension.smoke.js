@@ -1,32 +1,49 @@
-// Smoke test of out/extension.js against a minimal mock of the VS Code API:
-// activation, command registration, the demo run end to end, approval via notification, export.
+// Smoke test of out/extension.js against a mocked VS Code API: activation, contributed commands,
+// tree views, a full demo with hiring + release approvals decided "in the IDE", auto-resume, dashboard.
 const Module = require("module"); const path = require("path"); const fs = require("fs"); const assert = require("assert");
-const commands = {}, posted = [], infos = [], diags = new Map();
-let webviewHandler, approveAnswered = false;
-const ev = () => { const l = []; const f = cb => (l.push(cb), { dispose() {} }); f.fire = x => l.forEach(c => c(x)); return f; };
+const commands = {}, posted = [], infos = [], providers = {}, contexts = {};
+let webviewHandler, dashboardHtml = "";
+const Emitter = class { constructor() { this.l = []; this.event = cb => (this.l.push(cb), { dispose() {} }); } fire(x) { this.l.forEach(c => c(x)); } };
+class TreeItem { constructor(label, state) { this.label = label; this.collapsibleState = state; } }
 const vscode = {
-  StatusBarAlignment: { Left: 1 }, ViewColumn: { One: 1, Beside: -2 }, DiagnosticSeverity: { Error: 0, Warning: 1 },
+  StatusBarAlignment: { Left: 1 }, ViewColumn: { One: 1, Active: -1, Beside: -2 }, DiagnosticSeverity: { Error: 0, Warning: 1 },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 }, TreeItem, EventEmitter: Emitter,
+  ThemeIcon: class { constructor(id, color) { this.id = id; this.color = color; } }, ThemeColor: class { constructor(id) { this.id = id; } },
+  MarkdownString: class { constructor(v) { this.value = v; } },
   Range: class { constructor(...a) { this.a = a; } },
   Diagnostic: class { constructor(r, m, s) { Object.assign(this, { r, message: m, severity: s }); } },
   Uri: { file: p => ({ fsPath: p, toString: () => p }), parse: s => ({ s }) },
   window: {
     createOutputChannel: () => ({ appendLine() {}, dispose() {} }),
     createStatusBarItem: () => ({ show() {}, hide() {}, dispose() {} }),
-    showInformationMessage: async (m, ...a) => { infos.push(m); return undefined; },
+    createTreeView: (id, o) => { providers[id] = o.treeDataProvider; return { dispose() {} }; },
+    showInformationMessage: async (m, ...a) => {
+      infos.push(m);
+      if (a.includes("Approve all hires")) return "Approve all hires";
+      if (/decision\(s\) waiting/.test(m)) {            // a release is waiting: decide in the run panel
+        const pending = posted.filter(p => p.type === "approvals").pop().items;
+        setTimeout(() => webviewHandler({ type: "decide", id: pending[0].id, approved: true, comment: "Approved in panel" }), 10);
+      }
+      if (/built, verified and approved/.test(m)) return "Company dashboard";
+      return undefined;
+    },
+    showWarningMessage: async () => undefined,
     showErrorMessage: async m => { throw new Error("showErrorMessage: " + m); },
-    showWarningMessage: async (m, ...a) => m.startsWith("Release approval") ? (approveAnswered = true, "Approve") : undefined,
-    showInputBox: async () => "Approved from notification",
-    createWebviewPanel: () => ({
-      webview: { cspSource: "vscode-resource:", set html(h) { this._h = h; }, get html() { return this._h; },
+    showInputBox: async () => "",
+    showQuickPick: async items => items[0],
+    createWebviewPanel: (type) => ({
+      webview: { cspSource: "vscode-resource:", set html(h) { if (type === "agenticSdlcDashboard") dashboardHtml = h; },
         postMessage: m => { posted.push(m); return Promise.resolve(true); },
-        onDidReceiveMessage: cb => { webviewHandler = cb; } },
+        onDidReceiveMessage: cb => { if (type === "agenticSdlcRun") webviewHandler = cb; } },
       reveal() {}, onDidDispose() {}, iconPath: null,
     }),
     activeTextEditor: undefined, createTerminal: () => ({ show() {}, sendText() {} }),
   },
-  languages: { createDiagnosticCollection: () => ({ clear: () => diags.clear(), set: (u, d) => diags.set(u.fsPath, d), dispose() {} }) },
-  commands: { registerCommand: (id, fn) => (commands[id] = fn, { dispose() {} }), executeCommand: async () => {} },
-  workspace: { getConfiguration: () => ({ get: (k, d) => d }), workspaceFolders: undefined, findFiles: async () => [] },
+  languages: { createDiagnosticCollection: () => ({ clear() {}, set() {}, dispose() {} }) },
+  commands: { registerCommand: (id, fn) => (commands[id] = fn, { dispose() {} }),
+              executeCommand: async (id, k, v) => { if (id === "setContext") contexts[k] = v; } },
+  workspace: { getConfiguration: () => ({ get: (k, d) => d }), workspaceFolders: undefined,
+               onDidChangeWorkspaceFolders: () => ({ dispose() {} }), getWorkspaceFolder: () => undefined },
   env: { openExternal: async () => true },
 };
 const orig = Module._load;
@@ -35,28 +52,31 @@ const ext = require("../out/extension");
 const context = { extensionPath: path.join(__dirname, ".."), subscriptions: [],
   secrets: { get: async () => undefined, store: async () => {}, delete: async () => {} } };
 ext.activate(context);
-const expected = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json"))).contributes.commands.map(c => c.command);
-assert.deepStrictEqual(Object.keys(commands).sort(), expected.sort(), "all contributed commands registered");
+const pkg = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "package.json")));
+assert.deepStrictEqual(Object.keys(commands).sort(), pkg.contributes.commands.map(c => c.command).sort(), "commands registered");
+assert.deepStrictEqual(Object.keys(providers).sort(), pkg.contributes.views.agenticSdlc.map(v => v.id).sort(), "views registered");
 
+const wait = async (pred, ms = 120000) => { const t = Date.now(); while (!pred()) { if (Date.now() - t > ms) throw new Error("timeout"); await new Promise(r => setTimeout(r, 200)); } };
 (async () => {
-  await commands["agenticSdlc.runDemo"]();
-  const t0 = Date.now();
-  while (!posted.some(m => m.type === "event" && m.ev.kind === "finished") && Date.now() - t0 < 60000) await new Promise(r => setTimeout(r, 200));
+  await commands["agenticSdlc.runDemo"](process.env.SAMPLE || "node");
+  await wait(() => infos.some(m => /built, verified and approved/.test(m)));
+  await wait(() => dashboardHtml.includes("Org chart"));
   const evts = posted.filter(m => m.type === "event").map(m => m.ev);
-  assert.ok(posted[0].type === "reset" && posted[0].mode === "replay");
-  assert.ok(posted.some(m => m.type === "approval"), "approval sent to panel");
-  assert.ok(approveAnswered, "approval notification shown");
   const gate = evts.find(e => e.kind === "human_gate");
-  assert.ok(gate && gate.approved && gate.comment === "Approved from notification");
-  assert.strictEqual(evts[evts.length - 1].status, "released");
-  assert.ok(diags.size === 0 || [...diags.values()].every(d => d.length >= 0));
-  // panel asks for export of the finished run
-  await webviewHandler({ type: "exportDemo" });
-  const fin = evts[evts.length - 1];
-  const workspace = posted[0].workspace;
-  const demo = path.join(workspace, path.dirname(fin.trace), "client_demo.html");
-  assert.ok(fs.existsSync(demo), "client demo exported");
-  assert.ok(webviewHandler && context.subscriptions.length > 0);
-  console.log(`PASS extension smoke: ${Object.keys(commands).length} commands, ${evts.length} events, approval via notification, demo exported to ${demo}`);
+  assert.ok(gate && gate.approved && gate.comment === "Approved in panel", "release approved from the panel");
+  assert.ok(infos.some(m => /waiting to be hired/.test(m)), "hiring requested before work");
+  const projects = providers["agenticSdlc.projects"].getChildren();
+  assert.strictEqual(projects.length, 1);
+  assert.match(projects[0].description, /^released · /);
+  const tasks = providers["agenticSdlc.projects"].getChildren(projects[0]);
+  assert.ok(tasks.length >= 11 && tasks.every(t => t.iconPath.id === "pass-filled"));
+  const org = providers["agenticSdlc.company"].getChildren();
+  assert.ok(org[0].label === "ZenLabs Delivery" && org.length >= 2);
+  const stacks = providers["agenticSdlc.stacks"].getChildren().map(i => i.label);
+  assert.ok(stacks.length >= 3, "stack + checks listed: " + stacks);
+  const approvals = providers["agenticSdlc.approvals"].getChildren();
+  assert.ok(approvals.some(a => a.label === "Recent decisions"));
+  assert.strictEqual(contexts["agenticSdlc.hasCompany"], true);
+  console.log(`PASS extension smoke: ${Object.keys(commands).length} commands, 4 views, demo released after hire + release approvals; stacks view: ${stacks.slice(1).join(" | ")}`);
   process.exit(0);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

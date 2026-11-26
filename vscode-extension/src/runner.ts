@@ -1,80 +1,63 @@
 /**
- * Runs the bundled Python orchestration engine as a child process and translates its
- * line protocol into typed callbacks. No VS Code imports, so it can be tested with plain Node.
+ * Bridge to the bundled orchestrator (Python). No VS Code imports, so it can be tested with plain Node.
  *
- * Protocol (stdout, one item per line):
- *   @@EVENT <json>             orchestrator event (plan, agent, tool, route, human_gate, started, finished, error)
- *   @@APPROVAL_REQUEST <json>  the run is paused at the human gate; answer with respond()
- *   anything else              human-readable log line
+ *  - EngineRun streams a long-running command (run / demo / resume) and parses its line protocol:
+ *      @@EVENT <json>   orchestrator event (plan, agent, tool, route, human_gate, finished, error)
+ *      anything else    human-readable log line
+ *  - engineJson runs a read command with --json (state, approvals, stacks) and returns the parsed result.
+ *  - engineCall runs a short command (approve, dashboard, demo-page, init) and returns its output.
+ *
+ * Approvals are asynchronous (deferred): a run stops when it needs a human, the IDE shows what is waiting,
+ * the user decides, and the extension resumes the project. Nothing blocks on stdin.
  */
-import { ChildProcessWithoutNullStreams, spawn } from "child_process";
+import { ChildProcessWithoutNullStreams, execFile, spawn } from "child_process";
 import * as path from "path";
 
-export interface RunOptions {
+export interface EngineEnv {
   python: string;
   engineDir: string;
-  workspace: string;
-  story: string;
   apiKey?: string;
-  model?: string;
-  targetOrg?: string;
-  minCoverage?: number;
-  maxFixIterations?: number;
   pmdPath?: string;
-  replayFile?: string;
-  recordFile?: string;
-  autoApprove?: string;
-  extraEnv?: Record<string, string>;
+  store?: string;
+  targetOrg?: string;
 }
 
 export interface RunCallbacks {
   onEvent(ev: any): void;
-  onApprovalRequest(ctx: any): void;
   onLog(line: string): void;
   onExit(code: number | null): void;
 }
 
-export interface ApprovalDecision {
-  approved: boolean;
-  approver: string;
-  comment?: string;
+export function engineEnvVars(e: EngineEnv): NodeJS.ProcessEnv {
+  const env: NodeJS.ProcessEnv = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1" };
+  if (e.apiKey) { env.ANTHROPIC_API_KEY = e.apiKey; }
+  if (e.pmdPath) { env.PMD_BIN = e.pmdPath; }
+  if (e.store) { env.AGENTIC_STORE = e.store; }
+  if (e.targetOrg) { env.SF_TARGET_ORG = e.targetOrg; }
+  return env;
 }
 
-export function buildArgs(o: RunOptions, storyFile: string): string[] {
-  const args = ["-u", path.join(o.engineDir, "run.py"),
-    "--story-file", storyFile, "--workspace", o.workspace, "--events", "--approval", "stdin"];
-  if (o.model) { args.push("--model", o.model); }
-  if (o.targetOrg) { args.push("--target-org", o.targetOrg); }
-  if (o.minCoverage) { args.push("--min-coverage", String(o.minCoverage)); }
-  if (o.maxFixIterations) { args.push("--max-fix-iterations", String(o.maxFixIterations)); }
-  if (o.replayFile) { args.push("--replay", o.replayFile); }
-  if (o.recordFile && !o.replayFile) { args.push("--record", o.recordFile); }
-  if (o.autoApprove) { args.push("--auto-approve", o.autoApprove); }
-  return args;
+export function cliPath(e: EngineEnv): string {
+  return path.join(e.engineDir, "agentic.py");
 }
 
 export class EngineRun {
   private proc?: ChildProcessWithoutNullStreams;
   private buffer = "";
-  private awaitingApproval = false;
   private exited = false;
 
-  constructor(private readonly opts: RunOptions, private readonly cb: RunCallbacks) {}
+  constructor(private readonly env: EngineEnv, private readonly cb: RunCallbacks) {}
 
-  start(storyFile: string): void {
-    const env: NodeJS.ProcessEnv = { ...process.env, PYTHONIOENCODING: "utf-8", ...(this.opts.extraEnv || {}) };
-    if (this.opts.apiKey) { env.ANTHROPIC_API_KEY = this.opts.apiKey; }
-    if (this.opts.pmdPath) { env.PMD_BIN = this.opts.pmdPath; }
-    if (this.opts.targetOrg) { env.SF_TARGET_ORG = this.opts.targetOrg; }
-    this.proc = spawn(this.opts.python, buildArgs(this.opts, storyFile), { cwd: this.opts.engineDir, env });
+  start(args: string[]): void {
+    this.proc = spawn(this.env.python, ["-u", cliPath(this.env), ...args],
+      { cwd: this.env.engineDir, env: engineEnvVars(this.env) });
     this.proc.stdout.setEncoding("utf8");
     this.proc.stderr.setEncoding("utf8");
     this.proc.stdout.on("data", (chunk: string) => this.consume(chunk));
     this.proc.stderr.on("data", (chunk: string) =>
       chunk.split(/\r?\n/).filter(l => l && !l.startsWith("Picked up ")).forEach(l => this.cb.onLog(l)));
-    this.proc.on("error", err => {
-      this.cb.onEvent({ kind: "error", message: `Could not start Python (${this.opts.python}): ${err.message}` });
-    });
+    this.proc.on("error", err =>
+      this.cb.onEvent({ kind: "error", message: `Could not start Python (${this.env.python}): ${err.message}` }));
     this.proc.on("close", code => {
       if (this.buffer) { this.handleLine(this.buffer); this.buffer = ""; }
       this.exited = true;
@@ -95,26 +78,30 @@ export class EngineRun {
   private handleLine(line: string): void {
     if (line.startsWith("@@EVENT ")) {
       try { this.cb.onEvent(JSON.parse(line.slice(8))); } catch { this.cb.onLog(line); }
-    } else if (line.startsWith("@@APPROVAL_REQUEST ")) {
-      this.awaitingApproval = true;
-      try { this.cb.onApprovalRequest(JSON.parse(line.slice(19))); } catch { this.cb.onApprovalRequest({}); }
     } else if (line.trim()) {
       this.cb.onLog(line);
     }
   }
 
-  get isAwaitingApproval(): boolean { return this.awaitingApproval; }
   get isRunning(): boolean { return !!this.proc && !this.exited; }
-
-  /** Answer the human gate. Returns false if no approval was pending (e.g. already answered). */
-  respond(decision: ApprovalDecision): boolean {
-    if (!this.proc || !this.awaitingApproval) { return false; }
-    this.awaitingApproval = false;
-    this.proc.stdin.write(JSON.stringify(decision) + "\n");
-    return true;
-  }
 
   cancel(): void {
     if (this.proc && !this.exited) { this.proc.kill(); }
   }
+}
+
+export function engineCall(e: EngineEnv, args: string[], timeoutMs = 120000): Promise<{ code: number; stdout: string; stderr: string }> {
+  return new Promise(resolve => {
+    execFile(e.python, [cliPath(e), ...args], { cwd: e.engineDir, env: engineEnvVars(e), timeout: timeoutMs,
+      maxBuffer: 64 * 1024 * 1024 }, (err, stdout, stderr) => {
+      const code = err ? (typeof (err as any).code === "number" ? (err as any).code : 1) : 0;
+      resolve({ code, stdout: String(stdout), stderr: String(stderr) });
+    });
+  });
+}
+
+export async function engineJson<T = any>(e: EngineEnv, args: string[]): Promise<T> {
+  const r = await engineCall(e, [...args, "--json"]);
+  if (r.code !== 0) { throw new Error(r.stderr.split("\n").filter(l => l && !l.startsWith("Picked up")).slice(-3).join(" ") || `exit ${r.code}`); }
+  return JSON.parse(r.stdout) as T;
 }
