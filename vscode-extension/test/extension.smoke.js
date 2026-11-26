@@ -29,7 +29,7 @@ const vscode = {
     },
     showWarningMessage: async () => undefined,
     showErrorMessage: async m => { throw new Error("showErrorMessage: " + m); },
-    showInputBox: async () => "",
+    showInputBox: async (o) => (o && /Business request/.test(o.title || "") ? process.env.__REQUEST || "" : ""),
     showQuickPick: async items => items[0],
     createWebviewPanel: (type) => ({
       webview: { cspSource: "vscode-resource:", set html(h) { if (type === "agenticSdlcDashboard") dashboardHtml = h; },
@@ -42,7 +42,7 @@ const vscode = {
   languages: { createDiagnosticCollection: () => ({ clear() {}, set() {}, dispose() {} }) },
   commands: { registerCommand: (id, fn) => (commands[id] = fn, { dispose() {} }),
               executeCommand: async (id, k, v) => { if (id === "setContext") contexts[k] = v; } },
-  workspace: { getConfiguration: () => ({ get: (k, d) => d }), workspaceFolders: undefined,
+  workspace: { getConfiguration: () => ({ get: (k, d) => d, update: async () => {} }), workspaceFolders: undefined,
                onDidChangeWorkspaceFolders: () => ({ dispose() {} }), getWorkspaceFolder: () => undefined },
   env: { openExternal: async () => true },
 };
@@ -77,6 +77,31 @@ const wait = async (pred, ms = 120000) => { const t = Date.now(); while (!pred()
   const approvals = providers["agenticSdlc.approvals"].getChildren();
   assert.ok(approvals.some(a => a.label === "Recent decisions"));
   assert.strictEqual(contexts["agenticSdlc.hasCompany"], true);
-  console.log(`PASS extension smoke: ${Object.keys(commands).length} commands, 4 views, demo released after hire + release approvals; stacks view: ${stacks.slice(1).join(" | ")}`);
+  console.log(`PASS extension smoke (demo): ${Object.keys(commands).length} commands, 4 views, demo released after hire + release approvals; stacks view: ${stacks.slice(1).join(" | ")}`);
+
+  // ---- live run on the Claude subscription runtime (default), with a stand-in Claude Code CLI
+  const os = require("os");
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-live-"));
+  const orchestrator = path.join(__dirname, "..", "..", "orchestrator");
+  Object.assign(process.env, {
+    CLAUDE_CODE_BIN: path.join(orchestrator, "tests", "fakes", "fake_claude.py"),
+    FAKE_CLAUDE_STATE: path.join(repo, "..", path.basename(repo) + "-fake.json"),
+    FAKE_CLAUDE_RECORDING: path.join(orchestrator, "samples", "python-promo-codes", "recording.json"),
+    ANTHROPIC_API_KEY: "sk-should-be-stripped",
+    __REQUEST: fs.readFileSync(path.join(orchestrator, "samples", "python-promo-codes", "story.md"), "utf8"),
+  });
+  vscode.workspace.workspaceFolders = [{ uri: { fsPath: repo } }];
+  infos.length = 0; posted.length = 0;
+  await commands["agenticSdlc.runRequest"]();
+  await wait(() => infos.some(m => /built, verified and approved/.test(m)));
+  const live = providers["agenticSdlc.projects"].getChildren();
+  assert.match(live[0].description, /^released · python/);
+  const head = providers["agenticSdlc.company"].getChildren()[0];
+  assert.ok(/\$0\.\d+/.test(head.description), "plan usage shown on the company node");
+  const dbRuns = require("child_process").execFileSync("python3", ["-c",
+    `import sqlite3;print(set(r[0] for r in sqlite3.connect('${repo}/.agentic-sdlc/company.db').execute('select adapter from runs')))`]).toString();
+  assert.match(dbRuns, /ClaudeCodeAdapter\/subscription/);
+  assert.ok(!/ClaudeApiAdapter/.test(dbRuns));
+  console.log(`PASS extension smoke (live, Claude subscription runtime): project released; runs billed as ${dbRuns.trim()}`);
   process.exit(0);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

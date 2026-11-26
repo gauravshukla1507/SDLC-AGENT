@@ -66,7 +66,7 @@ extension in `../vscode-extension` is a client of this CLI (it uses `--events`, 
 | **Approvals** | `hire`, `release`, `budget_override`, `gateway` and `escalation`. They can be **deferred**: the run pauses, someone runs `agentic.py approve`, then `agentic.py resume`, even from another machine sharing the store. |
 | **Tool gateway** | `allowed` / `ask_first` / `off` per action (`environment.validate`, `deploy.production`, `git.push`). |
 | **Budgets** | Cost per run, rolled up to agent, project and company. A warning at 80%; at 100% the agent is paused and a `budget_override` approval opens. |
-| **Adapters** | Per seat: `claude_api`, `claude_code` (headless Claude Code CLI), `http` (any bot) or `replay`. |
+| **Adapters and runtimes** | Per seat: `claude_api`, `claude_code`, `http` (any bot) or `replay`. Use `--runtime claude-subscription` (or `$AGENTIC_RUNTIME`) to run every Claude seat through Claude Code on your **Claude subscription**. Agents get read-only tools, the API key is stripped, parallelism is limited to 2, and the project pauses if you aren't signed in or hit a limit. `agentic.py doctor --probe` checks the setup. |
 | **Skills** | Company skills (`team-conventions`, `secure-coding`, `release-notes-style`) plus automatic stack skills. |
 | **Routines, export/import, audit, dashboard** | Recurring projects, portable company files without secrets, an append-only activity log, and a one-page HTML dashboard. |
 
@@ -86,7 +86,7 @@ python agentic.py dashboard -w /tmp --store /tmp/agentic-company.db --out /tmp/a
 python agentic.py stacks -w ~/work/any-repo
 
 # Live
-export ANTHROPIC_API_KEY=...
+export AGENTIC_RUNTIME=claude-subscription   # your Claude plan via Claude Code (or: export ANTHROPIC_API_KEY=...)
 python agentic.py run --company companies/default-company.json --request-file story.md -w ~/work/any-repo --approver deferred
 python agentic.py approvals -w ~/work/any-repo
 python agentic.py approve all --as "Gaurav" --comment "Pilot approved" -w ~/work/any-repo
@@ -103,16 +103,17 @@ overwrite the client's existing CI or docs.
 
 ## Tests
 
-`python -m pytest -q` runs 32 tests:
+`python -m pytest -q` runs 35 tests:
 
 - **Delivery:** Salesforce, Python and Node delivered end to end through the same playbook, and one company serving several stacks.
 - **Detection:** 12 detection cases (Java Maven and Gradle, .NET, Go, Rust, TypeScript, Ruby, PHP, dbt, Terraform, Salesforce, Python), a polyglot repo with operator overrides, a greenfield repo, and missing tools reported as skipped.
 - **Fix routing:** the rules for who fixes a failed check.
 - **CLI:** the deferred-approval flow the IDE uses, with JSON output.
+- **Runtime:** the Claude subscription runtime against a stand-in Claude Code CLI: billing, pause on sign-in errors, and resume.
 - **Company control plane:** approvals deferred across separate runs, rejection, budget hard stop and override, `ask_first`, escalation, `require_verification`, goal ancestry and stack skills in prompts, atomic checkout, routines, export without secrets, and the dashboard.
 
 ## Limits
 
 - Only Salesforce, Python and Node have end-to-end demos. The other stacks are covered by detection tests; their
   commands are the standard ones and should be confirmed on a real repository of each kind.
-- The `claude_code` and `http` adapters haven't been run against live services yet.
+- The subscription runtime is tested against a stand-in Claude Code CLI that uses the real JSON format; confirm with `doctor --probe` on your machine. The `http` adapter hasn't been run against a live service yet.

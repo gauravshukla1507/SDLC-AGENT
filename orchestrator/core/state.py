@@ -15,7 +15,7 @@ def _adapter(raw) -> dict:
     return raw if isinstance(raw, dict) else {"type": raw}
 
 
-def project_status(tasks: list[dict], pending: list[dict]) -> str:
+def project_status(tasks: list[dict], pending: list[dict], last_event: str | None = None) -> str:
     if any(t["status"] == "cancelled" for t in tasks):
         return "rejected"
     if tasks and all(t["status"] == "done" for t in tasks):
@@ -28,6 +28,8 @@ def project_status(tasks: list[dict], pending: list[dict]) -> str:
         return "waiting_approval"
     if any(t["status"] == "in_progress" for t in tasks):
         return "running"
+    if last_event == "project.paused":
+        return "paused"
     return "queued"
 
 
@@ -44,9 +46,17 @@ def company_state(store, company: dict, recent_approvals: int = 25) -> dict:
         det = store.one("SELECT details FROM activity WHERE company_id=? AND action='stack.detected' AND entity=? "
                         "ORDER BY seq DESC LIMIT 1", cid, f"goal:{g['id']}")
         trace = Path(g["workspace"] or ".") / ".agentic-sdlc" / "projects" / g["id"] / "trace.json"
+        last = store.one("SELECT action, details FROM activity WHERE company_id=? AND entity=? AND action LIKE 'project.%' "
+                         "ORDER BY seq DESC LIMIT 1", cid, f"goal:{g['id']}")
+        paused_reason = None
+        if last and last["action"] == "project.paused":
+            r = store.one("SELECT details FROM activity WHERE company_id=? AND action='agent.unavailable' "
+                          "ORDER BY seq DESC LIMIT 1", cid)
+            paused_reason = (r or {}).get("details", {}).get("reason") if r else None
         projects.append({
             "id": g["id"], "title": g["title"], "workspace": g["workspace"], "created": g["created"],
-            "status": project_status(tasks, pending), "stacks": (det or {}).get("details", {}).get("stacks", []),
+            "status": project_status(tasks, pending, last["action"] if last else None),
+            "paused_reason": paused_reason, "stacks": (det or {}).get("details", {}).get("stacks", []),
             "spent_usd": round(g["spent_usd"] or 0, 6), "budget_usd": g["budget_usd"],
             "trace": str(trace) if trace.exists() else None,
             "tasks": [{"id": t["id"], "key": t["key"], "title": t["title"], "kind": t["kind"],
@@ -67,6 +77,7 @@ def company_state(store, company: dict, recent_approvals: int = 25) -> dict:
         "approvals": [{k: a[k] for k in ("id", "type", "subject", "status", "payload", "decided_by", "comment",
                                          "created", "decided", "task_id")} for a in approvals],
         "spend": {"total_usd": round(sum(r["cost_usd"] or 0 for r in runs), 6),
+                  "billing": "subscription" if any("/subscription" in (r["adapter"] or "") for r in runs) else "api",
                   "limit_usd": spec.get("budgets", {}).get("company_usd"),
                   "estimated": any(r["tokens_estimated"] for r in runs)},
         "routines": [{"key": r["key"], "schedule": r["schedule"], "title": (r["spec"] or {}).get("title"),

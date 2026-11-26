@@ -325,3 +325,61 @@ def test_cli_deferred_flow_with_json_for_ide(tmp_path):
     trace = state["projects"][0]["trace"]
     assert _cli("demo-page", trace, "--out", str(tmp_path / "replay.html"))[0] == 0
     assert "Promo codes" in (tmp_path / "replay.html").read_text()
+
+
+# ------------------------------------------------------------------ Claude subscription runtime (Claude Code)
+def _fake_claude(monkeypatch, tmp_path, mode=None, recording=PY):
+    monkeypatch.setenv("CLAUDE_CODE_BIN", str(ROOT / "tests" / "fakes" / "fake_claude.py"))
+    monkeypatch.setenv("FAKE_CLAUDE_STATE", str(tmp_path / "fake_state.json"))
+    monkeypatch.setenv("FAKE_CLAUDE_RECORDING", str(SAMPLES / recording / "recording.json"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-must-not-be-used")      # must be stripped for subscription runs
+    if mode:
+        monkeypatch.setenv("FAKE_CLAUDE_MODE", mode)
+    else:
+        monkeypatch.delenv("FAKE_CLAUDE_MODE", raising=False)
+
+
+def _live_engine(tmp_path, approver, runtime="claude-subscription", store=None):
+    store = store or Store(tmp_path / "company.db")
+    company = create_company(store, load_spec(SPEC))
+    engine = Engine(store, company, get_playbook(), tmp_path / "ws", approver=approver, log=quiet, runtime=runtime)
+    hire_agents(store, company, engine.governance)
+    return store, company, engine
+
+
+def test_subscription_runtime_end_to_end(tmp_path, monkeypatch):
+    _fake_claude(monkeypatch, tmp_path)
+    store, company, engine = _live_engine(tmp_path, gov.auto_approver("Lead"))
+    engine.start_project((SAMPLES / PY / "story.md").read_text(), title="Promo codes (subscription)")
+    assert engine.run() == "released"
+    runs = store.all("SELECT * FROM runs")
+    assert runs and all(r["adapter"] == "ClaudeCodeAdapter/subscription" for r in runs)
+    assert all(r["cost_usd"] == 0.0123 and r["input_tokens"] == 1200 and not r["tokens_estimated"] for r in runs)
+    assert engine.concurrency <= 2
+    from core.state import company_state
+    assert company_state(store, company)["spend"]["billing"] == "subscription"
+
+
+def test_subscription_not_signed_in_pauses_then_resumes(tmp_path, monkeypatch):
+    _fake_claude(monkeypatch, tmp_path, mode="auth_error")
+    store, company, engine = _live_engine(tmp_path, gov.auto_approver("Lead"))
+    engine.start_project((SAMPLES / PY / "story.md").read_text(), title="Promo codes")
+    assert engine.run() == "paused"
+    assert "not signed in" in engine.paused_reason
+    from core.state import company_state
+    st = company_state(store, company)["projects"][0]
+    assert st["status"] == "paused" and "not signed in" in st["paused_reason"]
+    assert all(t["status"] in ("todo",) for t in engine.tasks())      # nothing lost, nothing half-done
+    _fake_claude(monkeypatch, tmp_path)                                # user signs in
+    e2 = Engine(store, company, get_playbook(), tmp_path / "ws", approver=gov.auto_approver("Lead"), log=quiet,
+                runtime="claude-subscription")
+    e2.attach(engine.goal["id"])
+    assert e2.run() == "released"
+
+
+def test_api_runtime_without_key_pauses_with_hint(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    store, company, engine = _live_engine(tmp_path, gov.auto_approver("Lead"), runtime="api")
+    engine.start_project("Add a hello endpoint", title="Hello")
+    assert engine.run() == "paused"
+    assert "claude-subscription" in engine.paused_reason

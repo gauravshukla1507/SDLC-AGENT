@@ -74,6 +74,8 @@ export function activate(context: vscode.ExtensionContext) {
   reg("agenticSdlc.revealArtifacts", (item?: ProjectItem) => revealArtifacts(item?.project));
   reg("agenticSdlc.initCompany", () => initCompanyConfig());
   reg("agenticSdlc.setApiKey", () => setApiKey());
+  reg("agenticSdlc.signInClaude", () => signInToClaude());
+  reg("agenticSdlc.checkSetup", () => checkSetup());
   reg("agenticSdlc.clearApiKey", async () => {
     await ctx.secrets.delete(SECRET_KEY);
     vscode.window.showInformationMessage("Agentic SDLC: API key removed.");
@@ -117,6 +119,10 @@ function pythonPath(): string | undefined {
   return cachedPython;
 }
 
+function runtime(): "claude-subscription" | "api" {
+  return cfg<string>("agentRuntime", "claudeSubscription") === "apiKey" ? "api" : "claude-subscription";
+}
+
 async function env(withKey: boolean): Promise<EngineEnv | undefined> {
   const python = pythonPath();
   if (!python) {
@@ -125,20 +131,73 @@ async function env(withKey: boolean): Promise<EngineEnv | undefined> {
   }
   return {
     python, engineDir: engineDir(),
-    apiKey: withKey ? (await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY) : undefined,
+    runtime: runtime(),
+    apiKey: withKey && runtime() === "api" ? (await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY) : undefined,
     pmdPath: cfg<string>("pmdPath", "") || undefined,
     store: cfg<string>("companyStore", "") || undefined,
     targetOrg: cfg<string>("salesforceTargetOrg", "") || undefined,
   };
 }
 
+function claudeCli(): string | undefined {
+  const configured = cfg<string>("claudeCodePath", "");
+  if (configured) { return configured; }
+  return canRun("claude") ? "claude" : undefined;
+}
+
+/** Make sure the chosen agent runtime is usable: the Claude subscription (Claude Code) or an API key. */
 async function requireKey(): Promise<boolean> {
+  if (runtime() === "claude-subscription") {
+    if (claudeCli()) { return true; }
+    const pick = await vscode.window.showWarningMessage(
+      "Agentic SDLC runs the agents on your Claude subscription through Claude Code, which isn't installed yet.",
+      "Install Claude Code", "Use an API key instead", "Run a demo instead");
+    if (pick === "Install Claude Code") { signInToClaude(true); }
+    if (pick === "Use an API key instead") {
+      await vscode.workspace.getConfiguration("agenticSdlc").update("agentRuntime", "apiKey", vscode.ConfigurationTarget.Global);
+      return !!(await setApiKey());
+    }
+    if (pick === "Run a demo instead") { await runDemo(); }
+    return false;
+  }
   if (await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY) { return true; }
   const pick = await vscode.window.showWarningMessage(
-    "Agentic SDLC needs an Anthropic API key to run the agents live.", "Set API key", "Run a demo instead");
+    "Agentic SDLC is set to use an Anthropic API key (setting: agentRuntime = apiKey), and none is set.", "Set API key", "Run a demo instead");
   if (pick === "Set API key") { return !!(await setApiKey()); }
   if (pick === "Run a demo instead") { await runDemo(); }
   return false;
+}
+
+function signInToClaude(install = false) {
+  const term = vscode.window.createTerminal("Claude sign-in");
+  term.show();
+  if (install || !claudeCli()) { term.sendText("npm install -g @anthropic-ai/claude-code"); }
+  term.sendText(cfg<string>("claudeCodePath", "") || "claude");
+  vscode.window.showInformationMessage(
+    "In the Claude terminal, type /login and choose your Claude account (Pro, Max, Team or Enterprise). "
+    + "Then close it and run 'Agentic SDLC: Check setup'.");
+}
+
+async function checkSetup() {
+  const e = await env(false);
+  if (!e) { return; }
+  const r = await engineCall({ ...e, runtime: runtime() }, ["doctor", "--json", "--probe", "-w", activeRoot || os.tmpdir(),
+                                                           "--runtime", runtime()], 240000);
+  let data: any;
+  try { data = JSON.parse(r.stdout); } catch { return vscode.window.showErrorMessage(`Check failed: ${r.stderr.slice(-300)}`); }
+  output.appendLine(`\n=== Agentic SDLC setup (${data.runtime}) ===`);
+  for (const c of data.checks) { output.appendLine(`${c.ok ? "OK " : c.ok === null ? "?? " : "!! "} ${c.check}: ${c.detail}`); }
+  output.show(true);
+  const bad = data.checks.filter((c: any) => c.ok === false && !String(c.check).startsWith("tool for"));
+  if (!bad.length) {
+    vscode.window.showInformationMessage(runtime() === "claude-subscription"
+      ? "Agentic SDLC is ready: agents will run on your Claude subscription." : "Agentic SDLC is ready (API key).");
+  } else {
+    const pick = await vscode.window.showWarningMessage(`Setup needs attention: ${bad.map((c: any) => c.detail).join("; ")}`,
+      ...(runtime() === "claude-subscription" ? ["Sign in to Claude"] : ["Set API key"]));
+    if (pick === "Sign in to Claude") { signInToClaude(); }
+    if (pick === "Set API key") { await setApiKey(); }
+  }
 }
 
 async function setApiKey(): Promise<string | undefined> {
@@ -343,6 +402,14 @@ async function afterRun(root: string, status?: string) {
     const pick = await vscode.window.showInformationMessage(msg, ...actions);
     if (pick === "Approve all hires") { await approveAllHires(); }
     if (pick === "Review") { ensurePanel().reveal(); await vscode.commands.executeCommand("agenticSdlc.approvals.focus"); }
+  } else if (status === "paused") {
+    const reason = state.projects.find((p: any) => p.status === "paused")?.paused_reason || "the agent runtime is unavailable";
+    setStatus("$(debug-pause) Agentic SDLC: paused", 30000);
+    const pick = await vscode.window.showWarningMessage(`Agentic SDLC paused: ${reason}`,
+      ...(runtime() === "claude-subscription" ? ["Sign in to Claude", "Resume"] : ["Set API key", "Resume"]));
+    if (pick === "Sign in to Claude") { signInToClaude(); }
+    if (pick === "Set API key") { await setApiKey(); }
+    if (pick === "Resume") { await resume(root); }
   } else if (status) {
     setStatus(`$(warning) Agentic SDLC: ${status}`, 30000);
     vscode.window.showWarningMessage(`Agentic SDLC: project ${status}. See the run panel.`);
@@ -450,7 +517,7 @@ const STATUS_ICON: Record<string, [string, string?]> = {
   blocked: ["bell", "list.warningForeground"], cancelled: ["circle-slash", "disabledForeground"],
   failed: ["error", "testing.iconFailed"], released: ["rocket", "testing.iconPassed"],
   waiting_approval: ["bell", "list.warningForeground"], escalated: ["warning", "list.errorForeground"],
-  rejected: ["circle-slash"], running: ["sync~spin"], queued: ["clock"],
+  rejected: ["circle-slash"], running: ["sync~spin"], queued: ["clock"], paused: ["debug-pause", "list.warningForeground"],
 };
 
 function icon(key: string): vscode.ThemeIcon {

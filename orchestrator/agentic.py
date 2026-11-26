@@ -18,6 +18,10 @@ Insight
 Company
   agentic.py init | routines [--run-due] | export --out f.json | import f.json
 
+Agents run on your Claude subscription (Pro/Max/Team/Enterprise) through Claude Code with
+--runtime claude-subscription (or $AGENTIC_RUNTIME), or per token with an API key (--runtime api).
+`agentic.py doctor` checks the setup.
+
 State lives in <workspace>/.agentic-sdlc/company.db, or in a shared store (--store / $AGENTIC_STORE)
 so one company can serve many repositories. Add --json to read commands for machine output.
 """
@@ -36,6 +40,7 @@ sys.path.insert(0, str(HERE))
 
 import stacks  # noqa: E402
 from core import governance as gov  # noqa: E402
+from core.adapters import RUNTIMES, claude_cli, subscription_env  # noqa: E402
 from core.company import create_company, hire_agents, load_spec, org_chart  # noqa: E402
 from core.dashboard import render_dashboard  # noqa: E402
 from core.engine import Engine  # noqa: E402
@@ -118,7 +123,11 @@ def replay_for(ws: Path, explicit: str | None):
 
 
 def exit_code(status: str) -> int:
-    return 0 if status == "released" else 2 if status in ("waiting_approval", "escalated") else 1
+    return {"released": 0, "waiting_approval": 2, "escalated": 2, "paused": 3}.get(status, 1)
+
+
+def runtime_of(args) -> str:
+    return getattr(args, "runtime", None) or os.environ.get("AGENTIC_RUNTIME") or "api"
 
 
 # ------------------------------------------------------------------ delivery
@@ -139,7 +148,7 @@ def _start(args, replay=None, request=None, title=None):
     store, company = open_company(ws, args.company, args.company_name, create=True)
     engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), replay=replay,
                     log=out, max_fix_iterations=args.max_fix_iterations, on_event=emitter(args.events),
-                    gate_options=gate_options(args))
+                    gate_options=gate_options(args), runtime=runtime_of(args))
     hire_agents(store, company, engine.governance)
     request = request or args.request or Path(args.request_file).read_text(encoding="utf-8")
     goal = engine.start_project(request, title=title or args.title, budget_usd=args.budget)
@@ -147,6 +156,8 @@ def _start(args, replay=None, request=None, title=None):
     status = engine.run()
     if status in ("waiting_approval", "escalated"):
         out(f"\nWaiting for a human. See: agentic.py approvals -w {ws}")
+    if status == "paused":
+        out(f"\nPaused: {engine.paused_reason}\nFix that, then: agentic.py resume -w {ws}")
     return exit_code(status)
 
 
@@ -182,7 +193,8 @@ def cmd_resume(args):
         pws = Path(g["workspace"] or ws)
         engine = Engine(store, company, get_playbook(), pws, approver=approver, log=out,
                         on_event=emitter(args.events), gate_options=gate_options(args),
-                        replay=replay_for(pws, args.replay), max_fix_iterations=args.max_fix_iterations)
+                        replay=replay_for(pws, args.replay), max_fix_iterations=args.max_fix_iterations,
+                        runtime=runtime_of(args))
         engine.attach(g["id"])
         out(f"Resuming {g['title']} ({g['id']})")
         code = max(code, exit_code(engine.run()))
@@ -311,6 +323,57 @@ def cmd_demo_page(args):
     return 0
 
 
+def cmd_doctor(args):
+    """Check what the agents need: Python, the chosen runtime (subscription or API key), and stack tools."""
+    import subprocess
+    runtime = runtime_of(args)
+    checks = [{"check": "python", "ok": sys.version_info >= (3, 11), "detail": sys.version.split()[0]}]
+    cli = claude_cli()
+    version = ""
+    if cli:
+        try:
+            version = subprocess.run([cli, "--version"], capture_output=True, text=True, timeout=30).stdout.strip()
+        except Exception as exc:  # noqa: BLE001
+            version = f"error: {exc}"
+    if runtime == "claude-subscription":
+        checks.append({"check": "claude code cli", "ok": bool(cli),
+                       "detail": version or "not found: npm install -g @anthropic-ai/claude-code"})
+        if cli and args.probe:
+            p = subprocess.run([cli, "-p", "--output-format", "json", "--tools", "", "--no-session-persistence"],
+                               input="Reply with exactly: OK", capture_output=True, text=True, timeout=180,
+                               env=subscription_env())
+            try:
+                data = json.loads(p.stdout)
+                ok = not data.get("is_error")
+                detail = "signed in; subscription reachable" if ok else str(data.get("result"))
+            except json.JSONDecodeError:
+                ok, detail = False, (p.stdout + p.stderr)[-300:]
+            checks.append({"check": "claude sign-in (probe)", "ok": ok, "detail": detail})
+        elif cli:
+            checks.append({"check": "claude sign-in", "ok": None,
+                           "detail": "run with --probe to test (sends one tiny prompt), or run `claude` and /login"})
+        checks.append({"check": "api key not forcing API billing", "ok": True,
+                       "detail": "ANTHROPIC_API_KEY is removed for agent runs" if os.environ.get("ANTHROPIC_API_KEY")
+                       else "no ANTHROPIC_API_KEY set"})
+    else:
+        checks.append({"check": "anthropic api key", "ok": bool(os.environ.get("ANTHROPIC_API_KEY")),
+                       "detail": "set" if os.environ.get("ANTHROPIC_API_KEY") else
+                       "not set (or use --runtime claude-subscription)"})
+    ws = Path(args.workspace)
+    detected, plan = stacks.checks_for(ws)
+    for c in plan:
+        if c.cmd:
+            checks.append({"check": f"tool for {c.name}", "ok": bool(shutil.which(c.tool)),
+                           "detail": c.tool if shutil.which(c.tool) else f"{c.tool} not installed (check will be skipped)"})
+    if args.json:
+        return emit_json({"runtime": runtime, "stacks": [s.name for s in detected], "checks": checks}) or 0
+    out(f"Runtime: {runtime}    Stacks here: {', '.join(s.name for s in detected) or 'none (greenfield)'}")
+    for c in checks:
+        mark = "ok " if c["ok"] else "?? " if c["ok"] is None else "!! "
+        out(f"  {mark} {c['check']:<34} {c['detail']}")
+    return 0 if all(c["ok"] is not False for c in checks[:3]) else 1
+
+
 def cmd_playbook(args):
     p = get_playbook()
     out(f"{p.name}: {p.description}")
@@ -330,7 +393,7 @@ def cmd_routines(args):
     if args.run_due:
         for r in due:
             engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), log=out,
-                            gate_options=gate_options(args))
+                            gate_options=gate_options(args), runtime=runtime_of(args))
             engine.start_project(r["spec"]["request"], title=r["spec"].get("title"))
             mark_run(store, r["id"])
             store.log(company["id"], "routine", "routine.fired", f"routine:{r['key']}")
@@ -375,6 +438,8 @@ def main(argv=None):
                                             "(e.g. Apex: sf alias; also $SF_TARGET_ORG)")
         p.add_argument("--min-coverage", type=int, default=75)
         p.add_argument("--events", action="store_true", help="Stream @@EVENT lines (IDE integrations)")
+        p.add_argument("--runtime", choices=RUNTIMES, help="claude-subscription: your Claude plan via Claude Code; "
+                                                           "api: per-token API key (default $AGENTIC_RUNTIME or api)")
         p.add_argument("--title")
         p.add_argument("--budget", type=float, help="Project budget in USD (default from company spec)")
         p.add_argument("--clean", action="store_true", help="Delete the workspace first")
@@ -423,6 +488,10 @@ def main(argv=None):
     p.add_argument("--out")
     p.set_defaults(fn=cmd_demo_page)
     common(sub.add_parser("playbook", help="Show the delivery playbook")).set_defaults(fn=cmd_playbook)
+    p = common(sub.add_parser("doctor", help="Check runtime (subscription / API key) and stack tools"))
+    p.add_argument("--runtime", choices=RUNTIMES)
+    p.add_argument("--probe", action="store_true", help="Send one tiny prompt to confirm the Claude sign-in")
+    p.set_defaults(fn=cmd_doctor)
 
     p = delivery(common(sub.add_parser("routines", help="List routines; --run-due starts due ones")))
     p.add_argument("--run-due", action="store_true")

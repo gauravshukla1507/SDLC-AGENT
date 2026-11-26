@@ -2,7 +2,7 @@
   "name": "agentic-sdlc",
   "displayName": "Agentic SDLC: AI Delivery Company",
   "description": "Run an AI delivery company inside VS Code, on any technology. An orchestrator with an org chart of Claude-powered agents (requirements, architect, developer, tester, reviewer, security, release) detects your stack, briefs the agents with its conventions, verifies every change with the stack's own build/analysis/test tools, enforces budgets and human approvals, and keeps a full audit trail.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "zenlabs",
   "license": "SEE LICENSE IN LICENSE.txt",
   "icon": "media/icon.png",
@@ -69,7 +69,7 @@
     "viewsWelcome": [
       {
         "view": "agenticSdlc.projects",
-        "contents": "No projects yet. Describe a change and the agent team delivers it on this repository, whatever the stack.\n[Run a business request](command:agenticSdlc.runRequest)\n[Run a demo (no API key)](command:agenticSdlc.runDemo)\n[Set up company\u2026](command:agenticSdlc.initCompany)"
+        "contents": "No projects yet. Describe a change and the agent team delivers it on this repository, whatever the stack. Agents run on your Claude subscription (via Claude Code) or an API key.\n[Run a business request](command:agenticSdlc.runRequest)\n[Run a demo (no sign-in needed)](command:agenticSdlc.runDemo)\n[Check setup](command:agenticSdlc.checkSetup)"
       },
       {
         "view": "agenticSdlc.approvals",
@@ -81,6 +81,18 @@
       }
     ],
     "commands": [
+      {
+        "command": "agenticSdlc.checkSetup",
+        "title": "Check setup (Claude subscription / API key, stack tools)",
+        "category": "Agentic SDLC",
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "agenticSdlc.signInClaude",
+        "title": "Sign in to Claude (use my subscription)",
+        "category": "Agentic SDLC",
+        "icon": "$(account)"
+      },
       {
         "command": "agenticSdlc.runRequest",
         "title": "Run a business request\u2026",
@@ -258,6 +270,11 @@
           "command": "agenticSdlc.refresh",
           "when": "view == agenticSdlc.stacks",
           "group": "navigation@1"
+        },
+        {
+          "command": "agenticSdlc.checkSetup",
+          "when": "view == agenticSdlc.projects",
+          "group": "overflow"
         }
       ],
       "view/item/context": [
@@ -337,6 +354,24 @@
     "configuration": {
       "title": "Agentic SDLC",
       "properties": {
+        "agenticSdlc.agentRuntime": {
+          "type": "string",
+          "enum": [
+            "claudeSubscription",
+            "apiKey"
+          ],
+          "default": "claudeSubscription",
+          "enumDescriptions": [
+            "Run agents on your Claude Pro/Max/Team/Enterprise plan through Claude Code (signed in with /login). No API key needed; your plan's usage limits apply.",
+            "Run agents through the Anthropic API with your API key (billed per token)."
+          ],
+          "description": "How the agents reach Claude."
+        },
+        "agenticSdlc.claudeCodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Claude Code CLI ('claude') if it is not on PATH."
+        },
         "agenticSdlc.approverName": {
           "type": "string",
           "default": "",

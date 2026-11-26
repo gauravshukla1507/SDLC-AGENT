@@ -21,7 +21,7 @@
 | `core/engine.py` | Scheduler and heartbeats: ready tasks wake their assignee and run in parallel waves. Agent runs, gates, fix routing, approvals, budget enforcement, traces. |
 | `core/governance.py` | Approvals (hire, release, budget_override, gateway, escalation), approver strategies (deferred, CLI, IDE, auto), tool-gateway policies. |
 | `core/budget.py` | Cost per run (token pricing), roll-up to agent, project and company; 80% warning and 100% hard stop. |
-| `core/adapters.py` | Bring-your-own-agent: `claude_api`, `claude_code` (headless CLI), `http` (any bot), `replay`. |
+| `core/adapters.py` | Bring-your-own-agent: `claude_api`, `claude_code` (headless CLI), `http` (any bot), `replay`. Runtime `claude-subscription` routes Claude seats through Claude Code on the user's plan; an unavailable runtime pauses the project (`AgentUnavailable`). |
 | `core/playbook.py`, `delivery.py` | The playbook abstraction and the universal delivery playbook (roles, steps, gates, routing, file layout). |
 | `stacks/` | Stack detection, verification plans (blocking vs advisory, install → build → static → test → lint), environment checks, project context, convention skills. Platform-specific helpers (e.g. Apex PMD and org validation) live here as plug-ins. |
 | `core/state.py`, `core/dashboard.py`, `core/demo_page.html` | Read model for UIs, company dashboard, step-through replay page. |

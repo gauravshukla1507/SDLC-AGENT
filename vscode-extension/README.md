@@ -31,9 +31,12 @@ and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for 
 
 ## Getting started
 
-1. Activity bar → **Agentic SDLC** → **Run a demo (no API key)** → pick Node, Python or Salesforce.
+1. Activity bar → **Agentic SDLC** → **Run a demo (no sign-in needed)** → pick Node, Python or Salesforce.
    The same playbook runs every stack. Approve the hires and then the release when asked.
-2. **Agentic SDLC: Install engine dependencies**, then **Agentic SDLC: Set Anthropic API key** (stored in your OS keychain).
+2. **Use your Claude subscription:** run **Agentic SDLC: Sign in to Claude (use my subscription)**. It installs Claude
+   Code if needed and opens it; type `/login` and choose your Pro, Max, Team or Enterprise account. Then run
+   **Agentic SDLC: Check setup**. No API key is needed. (Prefer per-token billing? Set `agenticSdlc.agentRuntime`
+   to `apiKey` and use **Set Anthropic API key**.)
 3. Open any repository and run **Run a business request…**, or right-click a `.md` story → **Run on this file**.
 4. Review the diff on the new `agentic/…` branch, then commit and open a PR as usual. Your CI stays in charge.
 
@@ -43,14 +46,16 @@ and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for 
 ## Requirements
 
 - Python 3.11+ (the orchestrator is bundled with the extension)
+- A Claude subscription with [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in, or an Anthropic API key
 - The tools of the stacks you use (npm, mvn/gradle, dotnet, pytest, go, cargo, PMD for Apex, …). Missing tools are
   reported as *skipped*, never as *passed*.
-- An Anthropic API key for live runs; demos need none.
 
 ## Settings
 
 | Setting | Default | |
 |---|---|---|
+| `agenticSdlc.agentRuntime` | `claudeSubscription` | Run agents on your Claude plan via Claude Code, or `apiKey` |
+| `agenticSdlc.claudeCodePath` | `claude` | Claude Code CLI location |
 | `agenticSdlc.approverName` | OS user | Name in the audit trail |
 | `agenticSdlc.autoResume` | `true` | Resume once nothing is waiting for you |
 | `agenticSdlc.createGitBranch` | `true` | New branch per live run |
@@ -58,6 +63,16 @@ and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for 
 | `agenticSdlc.companyStore` | per repo | Shared company database across repositories |
 | `agenticSdlc.pythonPath` / `pmdPath` | auto | Tool locations |
 | `agenticSdlc.salesforceTargetOrg` | – | Only for Apex repos: sandbox/scratch alias for environment validation |
+
+## Claude subscription details
+
+- **One call per turn:** each agent turn is one headless Claude Code call. Agents can read your repository but
+  can't edit files or run commands; the orchestrator writes their output and runs the verification tools.
+- **Your plan, not an API key:** `ANTHROPIC_API_KEY` is removed from the agents' environment, so usage counts
+  against your plan.
+- **Usage limits:** at most 2 agents work in parallel. If you reach your plan's limit or aren't signed in, the
+  project **pauses** and offers *Sign in to Claude* or *Resume*. Nothing is lost.
+- **What spend shows:** the API-equivalent value Claude Code reports, labelled as plan usage.
 
 ## Data and security
 

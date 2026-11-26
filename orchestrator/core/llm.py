@@ -20,6 +20,8 @@ class LLMResult:
     output_tokens: int | None = None
     model: str | None = None
     latency_s: float = 0.0
+    cost_usd: float | None = None      # reported by the runtime (e.g. Claude Code); else computed from tokens
+    billing: str = "api"               # "api" (pay per token) or "subscription" (Claude plan via Claude Code)
 
 
 class ClaudeLLM:

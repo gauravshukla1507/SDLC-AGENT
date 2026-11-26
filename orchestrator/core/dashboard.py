@@ -41,6 +41,7 @@ def render_dashboard(store, company: dict) -> str:
     spend = sum(r["cost_usd"] or 0 for r in runs)
     limit = spec.get("budgets", {}).get("company_usd")
     estimated = any(r["tokens_estimated"] for r in runs)
+    subscription = any("/subscription" in (r["adapter"] or "") for r in runs)
     pending = [a for a in approvals if a["status"] == "pending"]
 
     def bar(spent, lim):
@@ -134,7 +135,8 @@ def render_dashboard(store, company: dict) -> str:
         (len(projects), "Projects"),
         (f"{sum(t['status'] == 'done' for t in tasks)}/{len(tasks)}", "Tasks done"),
         (len(pending), "Pending approvals"),
-        (f"${spend:.4f}" + (f" / ${limit:.0f}" if limit else ""), "Spend" + (" (est. tokens)" if estimated else "")),
+        (f"${spend:.4f}" + (f" / ${limit:.0f}" if limit else ""),
+         "Claude plan usage (API-equivalent)" if subscription else "Spend" + (" (est. tokens)" if estimated else "")),
     ]
     kpi_html = "".join(f'<div class="kpi"><div class="v">{_e(v)}</div><div class="l">{_e(l)}</div></div>' for v, l in kpis)
 
