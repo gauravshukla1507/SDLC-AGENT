@@ -1,4 +1,4 @@
-# Agentic SDLC for Salesforce: Multi-Agent Orchestration
+# Agentic SDLC: Multi-Agent Orchestration
 
 AI agents work together to deliver Salesforce changes from start to finish. An **orchestrator** coordinates
 seven specialist Claude agents through **real quality gates** to turn a business request into verified,
