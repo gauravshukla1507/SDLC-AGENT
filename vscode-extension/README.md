@@ -19,7 +19,13 @@ and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for 
 
 - **Projects**: every request is a project, broken into tasks with assignee, status and attempts. Open one in the
   run panel, create a replay page for stakeholders, or reveal its artifacts.
-- **Approvals**: hiring, release, budget overrides, gateway actions and escalations. Approve or reject inline or
+- **Spec-driven development** (default): the agents write a constitution, a spec (user stories, `AC-n`
+  acceptance criteria) and a plan with test-first tasks in `specs/NNN-feature/`. You review the spec and the plan
+  in the run panel (*Approve* or *Request changes*) before any code is written; a spec-coverage gate checks that
+  every acceptance criterion has a test.
+- **Codebase graph** for existing products: the repository is mapped with Graphify so agents reuse existing code
+  and reviewers see the blast radius. *Stack & verification* → *Build* / *Open graph*.
+- **Approvals**: spec and plan reviews, hiring, release, budget overrides, gateway actions and escalations. Approve or reject inline or
   in the run panel; the project resumes automatically.
 - **Org chart**: seats, reporting lines, adapters and models, skills, and spend against budget.
 - **Stack & verification**: what was detected in this repository and exactly which tools will verify the work,
@@ -40,7 +46,8 @@ and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for 
    - **This workspace:** extend the existing code base. Its stack is detected and its conventions followed.
    - **A new folder:** create a new application. The architect chooses the stack from the document, and the folder
      becomes a git repository.
-3. Approve the hires (once per repository), follow the run panel, then approve the release.
+3. Approve the hires (once per repository), then review the **spec** and the **plan** in the run panel (answer
+   open questions in your comment, or request changes), follow the build, then approve the release.
 4. Review the diff on the new `agentic/…` branch, commit and open a PR as usual. Your CI stays in charge.
 
 For a small change in the current repository, use **Agentic SDLC: Describe a change…** or select text →
@@ -53,6 +60,7 @@ For a small change in the current repository, use **Agentic SDLC: Describe a cha
 
 - Python 3.11+ (the orchestrator is bundled with the extension)
 - A Claude subscription with [Claude Code](https://docs.claude.com/en/docs/claude-code) signed in, or an Anthropic API key
+- Optional, for existing products: [Graphify](https://pypi.org/project/graphifyy/) (`pip install graphifyy`)
 - The tools of the stacks you use (npm, mvn/gradle, dotnet, pytest, go, cargo, PMD for Apex, …). Missing tools are
   reported as *skipped*, never as *passed*.
 
@@ -61,6 +69,8 @@ For a small change in the current repository, use **Agentic SDLC: Describe a cha
 | Setting | Default | |
 |---|---|---|
 | `agenticSdlc.agentRuntime` | `claudeSubscription` | Run agents on your Claude plan via Claude Code, or `apiKey` |
+| `agenticSdlc.playbook` | `specDriven` | Spec-driven development, or `classic` (requirements → design → build) |
+| `agenticSdlc.codebaseGraph` | `auto` | Map existing code bases with Graphify before planning, or `off` |
 | `agenticSdlc.claudeCodePath` | `claude` | Claude Code CLI location |
 | `agenticSdlc.approverName` | OS user | Name in the audit trail |
 | `agenticSdlc.autoResume` | `true` | Resume once nothing is waiting for you |

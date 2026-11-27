@@ -68,6 +68,10 @@ class ReplayLLM:
             self.queues.setdefault(item["agent"], []).append(item)
         self.model = data.get("model", "recorded")
 
+    def skip(self, agent: str, n: int):
+        """Drop answers already used by earlier processes of the same project (resume after approvals)."""
+        del self.queues.get(agent, [])[:n]
+
     def complete(self, agent: str, system: str, user: str) -> LLMResult:
         queue = self.queues.get(agent)
         if not queue:

@@ -4,6 +4,8 @@
 // A stand-in Claude Code CLI (orchestrator/tests/fakes) answers with recorded responses on the subscription runtime.
 const Module = require("module"); const path = require("path"); const fs = require("fs"); const assert = require("assert");
 const commands = {}, posted = [], infos = [], providers = {}, contexts = {};
+const settings = { playbook: "classic" };     // parts 1-2 replay classic fixtures; part 3 is spec-driven
+const reviews = [];
 let webviewHandler, dashboardHtml = "";
 const Emitter = class { constructor() { this.l = []; this.event = cb => (this.l.push(cb), { dispose() {} }); } fire(x) { this.l.forEach(c => c(x)); } };
 class TreeItem { constructor(label, state) { this.label = label; this.collapsibleState = state; } }
@@ -24,7 +26,12 @@ const vscode = {
       if (a.includes("Approve all hires")) return "Approve all hires";
       if (/decision\(s\) waiting/.test(m)) {            // a release is waiting: decide in the run panel
         const pending = posted.filter(p => p.type === "approvals").pop().items;
-        setTimeout(() => webviewHandler({ type: "decide", id: pending[0].id, approved: true, comment: "Approved in panel" }), 10);
+        const a = pending[0];
+        const requestChanges = a.type === "spec" && !reviews.includes("spec:changes");   // first spec review
+        reviews.push(a.type + (requestChanges ? ":changes" : ":approved"));
+        setTimeout(() => webviewHandler(requestChanges
+          ? { type: "decide", id: a.id, approved: false, comment: "Minimum order value uses the subtotal before discounts." }
+          : { type: "decide", id: a.id, approved: true, comment: "Approved in panel" }), 10);
       }
       if (/built, verified and approved/.test(m)) return "Company dashboard";
       if (/stories and acceptance criteria are ready/.test(m)) return undefined;
@@ -46,7 +53,7 @@ const vscode = {
   languages: { createDiagnosticCollection: () => ({ clear() {}, set() {}, dispose() {} }) },
   commands: { registerCommand: (id, fn) => (commands[id] = fn, { dispose() {} }),
               executeCommand: async (id, k, v) => { if (id === "setContext") contexts[k] = v; } },
-  workspace: { getConfiguration: () => ({ get: (k, d) => d, update: async () => {} }), workspaceFolders: undefined,
+  workspace: { getConfiguration: () => ({ get: (k, d) => (k in settings ? settings[k] : d), update: async () => {} }), workspaceFolders: undefined,
                onDidChangeWorkspaceFolders: () => ({ dispose() {} }), getWorkspaceFolder: () => undefined },
   env: { openExternal: async () => true },
 };
@@ -124,5 +131,31 @@ const wait = async (pred, ms = 120000) => { const t = Date.now(); while (!pred()
   assert.match(dbRuns, /ClaudeCodeAdapter\/subscription/);
   assert.ok(!/ClaudeApiAdapter/.test(dbRuns));
   console.log(`PASS extension smoke (change in workspace, Claude subscription runtime): released; runs billed as ${dbRuns.trim()}`);
+
+  // ---- 3) spec-driven development (default playbook) on an existing product, reviews decided in the run panel
+  settings.playbook = "specDriven";
+  const shop = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-sdd-shop-"));
+  fs.cpSync(path.join(fixtures, "python-sdd-existing-shop", "existing"), shop, { recursive: true });
+  useFixture("python-sdd-existing-shop");
+  process.env.__REQUEST = fs.readFileSync(path.join(fixtures, "python-sdd-existing-shop", "story.md"), "utf8");
+  vscode.workspace.workspaceFolders = [{ uri: { fsPath: shop } }];
+  infos.length = 0; posted.length = 0; reviews.length = 0;
+  await commands["agenticSdlc.runRequest"]();
+  await wait(() => infos.some(m => /built, verified and approved/.test(m)));
+  assert.deepStrictEqual(reviews, ["spec:changes", "spec:approved", "plan:approved", "release:approved"], reviews.join());
+  const sdd = providers["agenticSdlc.projects"].getChildren()[0];
+  assert.match(sdd.description, /^released · python · SDD/);
+  const sddDocs = providers["agenticSdlc.projects"].getChildren(
+    providers["agenticSdlc.projects"].getChildren(sdd).find(c => c.label === "Documents"));
+  const byName = Object.fromEntries(sddDocs.map(d => [d.label, d.description]));
+  assert.ok(/^spec · 001-promo-codes-at-checkout/.test(byName["spec.md"]) && byName["tasks.md"] && byName["constitution.md"],
+            JSON.stringify(byName));
+  const spec = fs.readFileSync(path.join(shop, "specs", "001-promo-codes-at-checkout", "spec.md"), "utf8");
+  assert.ok(spec.includes("Revised after review"), "the requirements agent revised the spec");
+  const sddEvents = posted.filter(m => m.type === "event").map(m => m.ev);
+  assert.ok(sddEvents.some(e => e.kind === "tool" && e.tool === "spec_coverage" && e.passed));
+  const graphItem = providers["agenticSdlc.stacks"].getChildren().find(i => /Codebase graph/.test(i.label));
+  assert.ok(graphItem, "codebase graph shown in Stack & verification");
+  console.log(`PASS extension smoke (spec-driven, existing product): reviews ${reviews.join(" → ")}; graph: ${graphItem.description}`);
   process.exit(0);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

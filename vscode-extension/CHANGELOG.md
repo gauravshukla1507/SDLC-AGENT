@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.0
+- **Spec-driven development is the default.** Constitution → spec → *your review* → plan + tasks → *your review* →
+  tests first ∥ implementation → verification → **spec coverage** (every acceptance criterion has a test) → code
+  review → release. Specs follow the Spec Kit layout (`.specify/memory/constitution.md`, `specs/NNN-feature/`)
+  and are committed in your repository, numbered per feature.
+- **Spec and plan review cards** in the run panel: read the document, answer open questions, *Approve* or
+  *Request changes* (a comment is required; the author revises and asks again). Approval comments answer the
+  spec's `[NEEDS CLARIFICATION]` questions and are added to it.
+- **Codebase graph for existing products (Graphify).** Before planning, the repository is mapped into a knowledge
+  graph; agents get the architecture, the code related to the feature and the blast radius of their changes.
+  *Stack & verification* shows the graph with *Build* / *Open graph* actions. Requires `pip install graphifyy`.
+- New settings: `agenticSdlc.playbook` (`specDriven` | `classic`) and `agenticSdlc.codebaseGraph` (`auto` | `off`).
+- Spec files appear in each project's *Documents*. Projects keep the playbook they started with when resumed.
+
 ## 1.2.1
 - **Stories you can find:** each project in the Projects view has a *Documents* group (requirements.md with the epic,
   user stories and acceptance criteria; design.md; release notes). You're told when the stories are ready, with a

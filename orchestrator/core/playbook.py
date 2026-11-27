@@ -9,6 +9,8 @@ not a different technology. A playbook supplies:
 """
 from __future__ import annotations
 
+import os
+
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -23,6 +25,10 @@ class Step:
     inputs: tuple[str, ...] = ()    # work-product path prefixes given to the agent
     with_context: bool = False      # include existing-project context
     gateway_action: str | None = None  # tool action name checked against governance gateway policy
+    approval_type: str = "release"  # approval steps: "release" (default) or a document review such as "spec", "plan"
+    document: str | None = None     # document approvals: the file under review, e.g. "{spec_dir}spec.md"
+    revise_step: str | None = None  # document approvals: on "request changes", this step's role revises the document
+    receives_request: bool = False  # this agent step gets the original request/requirements document
 
 
 class Playbook:
@@ -31,8 +37,17 @@ class Playbook:
     source_prefixes: tuple[str, ...] = ()   # written into the workspace in place
     roles: dict = {}
 
-    def steps(self) -> list[Step]:
+    def steps(self, ws: Path | None = None) -> list[Step]:
+        """The task graph. May depend on the repository (e.g. skip writing a constitution that already exists)."""
         raise NotImplementedError
+
+    def feature_vars(self, ws: Path, title: str) -> dict:
+        """Per-project variables substituted into step inputs, titles and documents (e.g. {spec_dir})."""
+        return {}
+
+    def task_context(self, ws: Path, task: dict, goal: dict, files: dict[str, str]) -> str:
+        """Extra, task-specific context for an agent (e.g. a codebase-graph query). Empty by default."""
+        return ""
 
     def scaffold(self, ws: Path) -> list[str]:
         return []
@@ -70,13 +85,18 @@ def register(cls):
     return cls
 
 
-def get_playbook(name: str = "universal") -> Playbook:
-    import delivery  # noqa: F401  (registers the universal playbook)
+DEFAULT_PLAYBOOK = "spec-driven"
+
+
+def get_playbook(name: str | None = None) -> Playbook:
+    import delivery, spec_driven  # noqa: F401,E401  (register the built-in playbooks)
+    name = name or os.environ.get("AGENTIC_PLAYBOOK") or DEFAULT_PLAYBOOK
+    name = {"classic": "universal", "sdd": "spec-driven", "specDriven": "spec-driven"}.get(name, name)
     if name not in _REGISTRY:
         raise KeyError(f"Unknown playbook '{name}'. Available: {', '.join(sorted(_REGISTRY))}")
     return _REGISTRY[name]()
 
 
 def available_playbooks() -> list[str]:
-    import delivery  # noqa: F401
+    import delivery, spec_driven  # noqa: F401,E401
     return sorted(_REGISTRY)

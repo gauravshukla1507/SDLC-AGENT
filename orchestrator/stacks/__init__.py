@@ -31,7 +31,7 @@ from pathlib import Path
 # Only when the test code itself cannot load/compile is the Test Agent the owner of the fix.
 TEST_CODE_BROKEN = re.compile(r"ERROR collecting|SyntaxError|ImportError while importing test|"
                               r"error TS\d+:.*\.(test|spec)\.|Cannot find module.*\.(test|spec)", re.I)
-SKIP_DIRS = {".git", "node_modules", ".agentic-sdlc", "__pycache__", ".venv", "venv", "target", "build", "dist",
+SKIP_DIRS = {".git", "node_modules", ".agentic-sdlc", "graphify-out", "__pycache__", ".venv", "venv", "target", "build", "dist",
              ".gradle", "bin", "obj", ".idea", ".vscode", ".sfdx", ".sf", "vendor", ".pytest_cache"}
 TEST_PATH = re.compile(r"(^|/)(tests?|__tests__|spec|specs|src/test)/|(_test|\.test|\.spec|_spec)\.[a-z]+$|"
                        r"(Test|Tests|IT)\.(java|kt|cs|cls)$|(^|/)test_[^/]+\.py$", re.I)
@@ -60,6 +60,10 @@ class Stack:
     checks: list[Check]
     skill: str | None = None
     environment: list[Check] = field(default_factory=list)   # sandbox/deploy-level validation
+
+
+CODE_SUFFIXES = (".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".kt", ".cs", ".go", ".rs", ".rb", ".php", ".swift",
+                 ".scala", ".c", ".cpp", ".h", ".cls", ".trigger", ".vue", ".svelte", ".dart")
 
 
 def walk_files(ws: Path, limit: int = 20000) -> list[str]:

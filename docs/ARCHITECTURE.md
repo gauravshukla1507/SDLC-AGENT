@@ -22,13 +22,30 @@
 | `core/governance.py` | Approvals (hire, release, budget_override, gateway, escalation), approver strategies (deferred, CLI, IDE, auto), tool-gateway policies. |
 | `core/budget.py` | Cost per run (token pricing), roll-up to agent, project and company; 80% warning and 100% hard stop. |
 | `core/adapters.py` | Bring-your-own-agent: `claude_api`, `claude_code` (headless CLI), `http` (any bot), `replay`. Runtime `claude-subscription` routes Claude seats through Claude Code on the user's plan; an unavailable runtime pauses the project (`AgentUnavailable`). |
-| `core/playbook.py`, `delivery.py` | The playbook abstraction and the universal delivery playbook (roles, steps, gates, routing, file layout). |
+| `core/playbook.py`, `spec_driven.py`, `delivery.py` | The playbook abstraction (steps, document reviews with revise-on-request-changes, per-feature variables, task context hooks), the **spec-driven** playbook (default) and the classic delivery playbook. |
+| `core/codegraph.py` | Graphify integration: build/refresh `graphify-out/`, architecture summary, feature-related code (graph query), blast radius of changed files. |
 | `stacks/` | Stack detection, verification plans (blocking vs advisory, install → build → static → test → lint), environment checks, project context, convention skills. Platform-specific helpers (e.g. Apex PMD and org validation) live here as plug-ins. |
 | `core/state.py`, `core/dashboard.py`, `core/replay_page.html`, `core/documents.py` | Read model for UIs, company dashboard, step-through replay page, requirements-document intake (Markdown, text, Word, PDF). |
 | `agentic.py` | CLI: delivery (`run --requirements <doc>`, `resume`), people (`approvals`, `approve`), insight (`state`, `stacks`, `org`, `board`, `budget`, `activity`, `dashboard`, `replay-page`, `doctor`), admin (`init`, `routines`, `export`, `import`). `--json` and `--events` for integrations. |
 | `vscode-extension/` | IDE client over the CLI: build from a requirements document (existing repo or new folder), views, run panel, approvals, diagnostics, dashboard. |
 
-## A project's life
+## A project's life (spec-driven, the default)
+
+```
+requirements document ─▶ project goal ─▶ feature folder specs/NNN-<slug>/
+  ─▶ MAP gate: Graphify builds the codebase graph (existing products; skipped for new applications)
+  ─▶ Architect: .specify/memory/constitution.md (only if the repository has none)
+  ─▶ Requirements: spec.md (US, AC-n Given/When/Then, [NEEDS CLARIFICATION])
+  ─▶ SPEC REVIEW (human): approve (comment → Clarifications) | request changes ─▶ revise task ─▶ review again
+  ─▶ Architect: plan.md + tasks.md, with the graph's architecture and related code ─▶ PLAN REVIEW (human)
+  ─▶ Tester (tests first, from the spec) ∥ Developer (implements tasks.md)
+  ─▶ VERIFY ─▶ SPEC COVERAGE (every AC id referenced by a test; missing → Tester) ─▶ ENVIRONMENT
+  ─▶ Reviewer ∥ Security, with the blast radius of changed existing files ─▶ release approval ─▶ Release
+```
+
+Specs, plans and the constitution are written into the repository (Spec Kit layout) and versioned with the code.
+
+## A project's life (classic playbook)
 
 ```
 requirements document (.md/.docx/.pdf) ─▶ text with headings and tables ─▶ project goal (under a company goal, under the mission)

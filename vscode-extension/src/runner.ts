@@ -22,6 +22,10 @@ export interface EngineEnv {
   targetOrg?: string;
   /** "claude-subscription" (Claude plan via Claude Code) or "api" (per-token API key) */
   runtime?: string;
+  /** "spec-driven" (default) or "classic" */
+  playbook?: string;
+  /** "auto" (map existing codebases with Graphify when installed) or "off" */
+  codebaseGraph?: string;
 }
 
 export interface RunCallbacks {
@@ -33,6 +37,8 @@ export interface RunCallbacks {
 export function engineEnvVars(e: EngineEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1" };
   if (e.runtime) { env.AGENTIC_RUNTIME = e.runtime; }
+  if (e.playbook) { env.AGENTIC_PLAYBOOK = e.playbook; }
+  if (e.codebaseGraph) { env.AGENTIC_GRAPHIFY = e.codebaseGraph; }
   if (e.runtime === "claude-subscription") {
     delete env.ANTHROPIC_API_KEY;            // otherwise Claude Code would bill the API key instead of the plan
   } else if (e.apiKey) {

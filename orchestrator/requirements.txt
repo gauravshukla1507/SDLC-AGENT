@@ -1,3 +1,4 @@
 anthropic>=0.40
 pytest>=8
+graphifyy>=0.9     # optional: codebase knowledge graph for existing products (spec-driven playbook)
 pypdf>=4          # reading PDF requirement documents (optional if poppler's pdftotext is installed)

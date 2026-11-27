@@ -47,7 +47,7 @@ from core.dashboard import render_dashboard  # noqa: E402
 from core.documents import DocumentError, read_requirements, title_of  # noqa: E402
 from core.engine import Engine  # noqa: E402
 from core.llm import ReplayLLM  # noqa: E402
-from core.playbook import get_playbook  # noqa: E402
+from core.playbook import available_playbooks, get_playbook  # noqa: E402
 from core.portability import export_company, import_company  # noqa: E402
 from core.routines import due_routines, mark_run  # noqa: E402
 from core.state import company_state  # noqa: E402
@@ -149,6 +149,22 @@ def exit_code(status: str) -> int:
     return {"released": 0, "waiting_approval": 2, "escalated": 2, "paused": 3}.get(status, 1)
 
 
+def playbook_for(args, store=None, goal_id=None):
+    """The playbook a project was started with (resume keeps it); otherwise --playbook / AGENTIC_PLAYBOOK / default."""
+    if store is not None and goal_id:
+        row = store.one("SELECT details FROM activity WHERE action='project.created' AND entity=?", f"goal:{goal_id}")
+        details = (row or {}).get("details") or {}
+        if isinstance(details, str):
+            try:
+                details = json.loads(details)
+            except ValueError:
+                details = {}
+        name = details.get("playbook")
+        if name:
+            return get_playbook(name)
+    return get_playbook(getattr(args, "playbook", None))
+
+
 def runtime_of(args) -> str:
     return getattr(args, "runtime", None) or os.environ.get("AGENTIC_RUNTIME") or "api"
 
@@ -172,7 +188,7 @@ def _start(args, replay=None, request=None, title=None):
         agentic_dir(ws).mkdir(parents=True, exist_ok=True)
         (agentic_dir(ws) / "replay.json").write_text(json.dumps({"recording": str(replay.path)}), encoding="utf-8")
     store, company = open_company(ws, args.company, args.company_name, create=True)
-    engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), replay=replay,
+    engine = Engine(store, company, playbook_for(args), ws, approver=make_approver(args.approver), replay=replay,
                     log=out, max_fix_iterations=args.max_fix_iterations, on_event=emitter(args.events),
                     gate_options=gate_options(args), runtime=runtime_of(args))
     hire_agents(store, company, engine.governance)
@@ -215,7 +231,7 @@ def cmd_resume(args):
         if all(t["status"] in ("done", "cancelled") for t in tasks):
             continue
         pws = Path(g["workspace"] or ws)
-        engine = Engine(store, company, get_playbook(), pws, approver=approver, log=out,
+        engine = Engine(store, company, playbook_for(args, store, g["id"]), pws, approver=approver, log=out,
                         on_event=emitter(args.events), gate_options=gate_options(args),
                         replay=replay_for(pws, args.replay), max_fix_iterations=args.max_fix_iterations,
                         runtime=runtime_of(args))
@@ -249,6 +265,11 @@ def cmd_approve(args):
         ids = [r["id"] for r in pending if not args.type or r["type"] == args.type]
     else:
         ids = [args.id]
+    if args.reject and not args.comment:
+        kinds = {r["id"]: r["type"] for r in pending}
+        if any(kinds.get(i) in ("spec", "plan") for i in ids):
+            out("Requesting changes to a spec or plan needs --comment: it tells the author what to change.")
+            return 2
     results = [g.resolve(i, not args.reject, args.as_name, args.comment or "") for i in ids]
     if args.json:
         return emit_json(results) or 0
@@ -399,10 +420,38 @@ def cmd_doctor(args):
 
 
 def cmd_playbook(args):
-    p = get_playbook()
+    p = get_playbook(args.playbook)
     out(f"{p.name}: {p.description}")
-    for s in p.steps():
+    out(f"    (available: {', '.join(available_playbooks())})")
+    for s in p.steps(Path(args.workspace)):
         out(f"    {s.kind:<9} {s.key:<18} {s.role or '':<13} after: {', '.join(s.deps) or '-'}")
+    return 0
+
+
+def cmd_graph(args):
+    """Codebase knowledge graph (Graphify) used by the spec-driven playbook on existing products."""
+    from core import codegraph
+    ws = Path(args.workspace)
+    if args.action == "build":
+        r = codegraph.build(ws, has_code=True)
+        out(r["summary"])
+        return 0 if r.get("passed") or r.get("skipped") else 1
+    if args.action == "status":
+        st = codegraph.status(ws)
+        if args.json:
+            return emit_json(st) or 0
+        for k, v in st.items():
+            out(f"  {k:<10} {v}")
+        return 0
+    if not codegraph.status(ws).get("built"):
+        out("No codebase graph yet. Run: agentic.py graph build")
+        return 1
+    if args.action == "query":
+        out(codegraph.query(ws, " ".join(args.text)) or "No matching nodes found.")
+    elif args.action == "affected":
+        out(codegraph.blast_radius(ws, args.text) or "No dependants found.")
+    elif args.action == "summary":
+        out(codegraph.architecture_summary(ws) or "No report.")
     return 0
 
 
@@ -416,7 +465,7 @@ def cmd_routines(args):
             f"{'DUE' if r['id'] in {d['id'] for d in due} else ''}")
     if args.run_due:
         for r in due:
-            engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), log=out,
+            engine = Engine(store, company, playbook_for(args), ws, approver=make_approver(args.approver), log=out,
                             gate_options=gate_options(args), runtime=runtime_of(args))
             engine.start_project(r["spec"]["request"], title=r["spec"].get("title"))
             mark_run(store, r["id"])
@@ -467,6 +516,7 @@ def main(argv=None):
         p.add_argument("--title")
         p.add_argument("--budget", type=float, help="Project budget in USD (default from company spec)")
         p.add_argument("--clean", action="store_true", help="Delete the workspace first")
+        p.add_argument("--playbook", help="spec-driven (default) or classic; resume keeps the project's playbook")
         return p
 
     p = delivery(common(sub.add_parser("run", help="Build from a requirements document (or inline request)")))
@@ -509,7 +559,13 @@ def main(argv=None):
     p.add_argument("trace")
     p.add_argument("--out")
     p.set_defaults(fn=cmd_replay_page)
-    common(sub.add_parser("playbook", help="Show the delivery playbook")).set_defaults(fn=cmd_playbook)
+    p = common(sub.add_parser("playbook", help="Show the delivery playbook"))
+    p.add_argument("--playbook", help="spec-driven (default) or classic")
+    p.set_defaults(fn=cmd_playbook)
+    p = common(sub.add_parser("graph", help="Codebase knowledge graph (Graphify): build, status, query, affected, summary"))
+    p.add_argument("action", choices=["build", "status", "query", "affected", "summary"])
+    p.add_argument("text", nargs="*", help="Question (query) or changed files (affected)")
+    p.set_defaults(fn=cmd_graph)
     p = common(sub.add_parser("doctor", help="Check runtime (subscription / API key) and stack tools"))
     p.add_argument("--runtime", choices=RUNTIMES)
     p.add_argument("--probe", action="store_true", help="Send one tiny prompt to confirm the Claude sign-in")

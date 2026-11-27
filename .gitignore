@@ -20,3 +20,4 @@ vscode-extension/test/last-trace.json
 # OS / editors
 .DS_Store
 .idea/
+vscode-extension/test/last-sdd-trace.json
