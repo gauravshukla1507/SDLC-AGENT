@@ -53,14 +53,26 @@ def company_state(store, company: dict, recent_approvals: int = 25) -> dict:
             r = store.one("SELECT details FROM activity WHERE company_id=? AND action='agent.unavailable' "
                           "ORDER BY seq DESC LIMIT 1", cid)
             paused_reason = (r or {}).get("details", {}).get("reason") if r else None
+        created = store.one("SELECT details FROM activity WHERE company_id=? AND action='project.created' AND entity=?",
+                            cid, f"goal:{g['id']}")
+        fvars = store.one("SELECT details FROM activity WHERE company_id=? AND action='project.vars' AND entity=?",
+                          cid, f"goal:{g['id']}")
+        spec_dir = ((fvars or {}).get("details") or {}).get("spec_dir")
+        ws = Path(g["workspace"] or ".")
+        spec_docs = []   # spec-driven: the feature's spec, plan and tasks, and the project constitution
+        if spec_dir and (ws / spec_dir).is_dir():
+            spec_docs = sorted(str(f) for f in (ws / spec_dir).rglob("*") if f.is_file())
+        if spec_dir and (ws / ".specify/memory/constitution.md").exists():
+            spec_docs.append(str(ws / ".specify/memory/constitution.md"))
         projects.append({
             "id": g["id"], "title": g["title"], "workspace": g["workspace"], "created": g["created"],
             "status": project_status(tasks, pending, last["action"] if last else None),
             "paused_reason": paused_reason, "stacks": (det or {}).get("details", {}).get("stacks", []),
             "spent_usd": round(g["spent_usd"] or 0, 6), "budget_usd": g["budget_usd"],
             "trace": str(trace) if trace.exists() else None,
-            "documents": sorted(str(f) for f in trace.parent.rglob("*") if f.is_file()
-                                and f.suffix in (".md", ".yml", ".yaml", ".xml") ) if trace.parent.exists() else [],
+            "playbook": ((created or {}).get("details") or {}).get("playbook"), "spec_dir": spec_dir,
+            "documents": spec_docs + (sorted(str(f) for f in trace.parent.rglob("*") if f.is_file()
+                                             and f.suffix in (".md", ".yml", ".yaml", ".xml")) if trace.parent.exists() else []),
             "tasks": [{"id": t["id"], "key": t["key"], "title": t["title"], "kind": t["kind"],
                        "assignee": t["assignee"], "status": t["status"], "attempts": t["attempts"],
                        "summary": ((t["result"] or {}).get("summary") or "")[:300],

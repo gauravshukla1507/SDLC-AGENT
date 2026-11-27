@@ -71,7 +71,7 @@ class UniversalDelivery(Playbook):
     description = "Any stack: detects the technology, its conventions and its verification tools from the repo"
     roles = ROLES
 
-    def steps(self) -> list[Step]:
+    def steps(self, ws: Path | None = None) -> list[Step]:
         return [
             Step("requirements", "Write user story & acceptance criteria", "agent", "requirements", with_context=True),
             Step("design", "Design solution & file plan", "agent", "architect", deps=["requirements"],

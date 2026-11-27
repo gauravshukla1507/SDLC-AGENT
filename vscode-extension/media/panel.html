@@ -121,6 +121,8 @@ button.no{background:transparent;border-color:var(--red);color:var(--red)}
 .err{border:1px solid var(--red);background:#331A21;color:#FFD5DA;border-radius:10px;padding:12px 14px;margin-bottom:14px}
 .linkbtn{background:none;border:none;color:var(--blue);padding:0;font-weight:500;text-decoration:underline;cursor:pointer}
 .hidden{display:none!important}
+.md.doc{max-height:420px;overflow:auto;border:1px solid var(--vscode-panel-border,#8884);padding:8px 12px;border-radius:6px}
+.hint{margin-top:6px;color:var(--vscode-editorWarning-foreground,#c90)}
 </style>
 </head>
 <body>
@@ -193,7 +195,7 @@ let EV = T.events;
 let live = false, pending = null, follow = true;
 let NODES = [];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const nodeOf = e => e.kind==='agent' ? e.agent : e.kind==='tool' ? e.tool : e.kind==='human_gate' ? 'human_gate' : e.kind==='route' ? (e.to||'developer') : null;
+const nodeOf = e => e.kind==='agent' ? e.agent : e.kind==='tool' ? e.tool : e.kind==='human_gate' ? (e.review&&e.node ? e.node : 'human_gate') : e.kind==='route' ? (e.to||'developer') : null;
 
 let pos = 0;            // number of events revealed
 let selected = 0;       // index into EV (or -1 for story)
@@ -313,14 +315,28 @@ function renderDetail(){
         : 'The gate found governor-limit risks before any human reviewed the code: SOQL and DML inside a loop would fail on a 200-record Data Loader batch. The orchestrator sends the findings to the agent that owns the file.')
       : e.tool==='verify' ? (e.passed ? 'Every blocking check detected for this stack passed. Advisory checks are reported but do not block.'
         : 'A blocking check failed. The orchestrator sends the output to the agent that owns the problem: the developer for failing tests (tests are the spec), the owner of the flagged files for static findings.')
+      : e.tool==='map' ? 'The existing codebase was mapped into a knowledge graph (Graphify). Agents get its architecture summary, the code related to the feature, and the blast radius of changed files.'
+      : e.tool==='spec_coverage' ? (e.passed ? 'Every acceptance criterion in the spec is referenced by at least one automated test.'
+        : 'Some acceptance criteria have no test. The orchestrator sends the list to the Test Agent.')
       : (e.passed ? 'Environment checks passed.' : 'Environment validation failed; the orchestrator routes the failures back.');
     h=`<div class="detail-title"><h3>${esc(e.summary)}</h3><span class="pill ${state[1]}">${state[0]}</span></div><p class="summary">${msg}</p>`;
     if(e.violations && e.violations.length) h+=`<div class="sec"><h4>Violations</h4><table class="vt"><tr><th>File</th><th>Line</th><th>Rule</th><th>Message</th></tr>${e.violations.map(v=>`<tr><td class="mono"><button class="linkbtn" data-vfile="${esc(v.file)}">${esc(v.file.split('/').pop())}</button></td><td class="mono">${v.line??'–'}</td><td><span class="pill ${/Loop|CRUD|Sharing|SOQLInjection/.test(v.rule)?'bad':'warn'}">${esc(v.rule)}</span></td><td>${esc(v.message)}</td></tr>`).join('')}</table></div>`;
     h+=`<div class="sec"><h4>${e.skipped?'Gate configuration':'Tool output (executed for real)'}</h4><pre class="out">${pytestOut(e.output)}</pre></div>`;
+  } else if(e.kind==='route' && /_changes_requested$/.test(e.reason||'')){
+    H.textContent='Orchestrator · changes requested';
+    h=`<div class="detail-title"><h3>${esc(e.gate)}: changes requested, sent to the ${esc(e.to_name)}</h3><span class="pill warn">Round ${e.iteration}</span></div>
+      <p class="summary">The reviewer's comment goes back to the author, who revises the document; the same review is then asked again. Nothing downstream starts until it is approved.</p>`;
   } else if(e.kind==='route'){
     H.textContent='Orchestrator · feedback loop';
     h=`<div class="detail-title"><h3>${esc(e.gate)} findings routed to the ${esc(e.to_name||'Developer Agent')}</h3><span class="pill warn">Iteration ${e.iteration}</span></div>
       <p class="summary">The orchestrator looks at which files failed and sends the findings to the agent that owns them (the developer for failing tests, because tests are the spec; the owner of the flagged files for static findings), along with the requirements, the design and the current source. The loop is capped (default 3 iterations) and escalates to a human if it can't converge.</p>`;
+  } else if(e.kind==='human_gate' && e.review){
+    const what=e.review==='spec'?'Spec':'Plan';
+    H.textContent=`Human review · ${what}`;
+    h=`<div class="detail-title"><h3>${what} ${e.approved?'approved':'not approved'}</h3><span class="pill ${e.approved?'ok':'bad'}">${e.approved?'APPROVED':'STOPPED'}</span></div>
+      <p class="summary">${e.approved?`The ${what.toLowerCase()} is now the source of truth for the next steps.`:`The ${what.toLowerCase()} was rejected after the maximum number of review rounds; the project stopped.`}</p>
+      ${e.document?`<div style="margin:6px 0 8px"><button class="linkbtn" data-open="${esc(e.document)}">Open ${esc(e.document)} in editor ↗</button></div>`:''}
+      <div class="sec"><h4>Decision record</h4><div class="finding"><div><b>${esc(e.approver)}</b> · ${esc(e.time)}<br><span class="meta">${esc(e.comment||'')}</span></div></div></div>`;
   } else if(e.kind==='human_gate'){
     H.textContent='Human approval gate';
     h=`<div class="detail-title"><h3>Release ${e.approved?'approved':'rejected'}</h3><span class="pill ${e.approved?'ok':'bad'}">${e.approved?'APPROVED':'REJECTED'}</span></div>
@@ -383,7 +399,7 @@ function outcome(e){
   return e.reason||'';
 }
 function actor(e){return e.kind==='agent'?e.agent_name:e.kind==='tool'?'Gate · '+(e.tool_name||e.tool).split(' (')[0]:e.kind==='human_gate'?'Human · '+e.approver:'Orchestrator'}
-function action(e){return e.kind==='agent'?e.step:e.kind==='plan'?'Build task graph':e.kind==='tool'?(e.tool==='environment'?'Environment validation':'Build, static analysis & tests'):e.kind==='route'?'Feedback loop':e.kind==='human_gate'?'Release approval':e.kind}
+function action(e){return e.kind==='agent'?e.step:e.kind==='plan'?'Build task graph':e.kind==='tool'?({environment:'Environment validation',map:'Map codebase (Graphify)',spec_coverage:'Spec coverage'}[e.tool]||'Build, static analysis & tests'):e.kind==='route'?'Feedback loop':e.kind==='human_gate'?(e.review?(e.review==='spec'?'Spec review':'Plan review'):'Release approval'):e.kind}
 function renderLog(){
   document.getElementById('logBody').innerHTML=EV.map((e,i)=>`<tr data-i="${i}" class="${i>=pos?'future':''} ${i===selected?'cur':''}"><td class="mono">${e.seq}</td><td class="mono">${time(e.time)}</td><td>${esc(actor(e))}</td><td>${esc(action(e))}</td><td>${esc(outcome(e))}</td></tr>`).join('');
   document.querySelectorAll('#logBody tr').forEach(tr=>tr.onclick=()=>{selected=+tr.dataset.i;render();document.querySelector('.grid').scrollIntoView({behavior:'smooth',block:'start'})});
@@ -394,6 +410,22 @@ function render(){renderPipe();renderKpis();renderLog();renderDetail();
   show('liveInd',live); show('cancelBtn',live); ['playBtn','stepBtn','allBtn','resetBtn','speed'].forEach(i=>show(i,done));
   show('reviewBtn',done&&T.mode!=='replay'&&T.status==='released'); show('exportBtn',done&&T.status==='released');
   document.getElementById('stepBtn').disabled=pos>=EV.length; document.getElementById('allBtn').disabled=pos>=EV.length;}
+function docCard(a,p){
+  // spec-driven review: the human reads the spec / plan, answers open questions, approves or requests changes
+  const what=a.type==='spec'?'Spec':'Plan';
+  const qs=p.questions||[];
+  return `<div class="detail-title"><h3>${esc(a.subject)}</h3><span class="pill warn">${what.toUpperCase()} REVIEW${p.revision?` · ROUND ${p.revision+1}`:''}</span></div>
+    <p class="summary">${a.type==='spec'
+      ?'Spec-driven development: the spec is the source of truth for the tests and the code. Check that the user stories and acceptance criteria say what the business asked for (no technology yet).'
+      :'Check the plan and task list: the design, the existing components it reuses, the constitution check and the test-first task order. Code is written only after this approval.'}
+      ${p.summary?`<br><br><b>${esc(p.author||'Author')}:</b> ${esc(p.summary)}`:''}</p>
+    ${p.document?`<div style="margin:6px 0 8px"><button class="linkbtn" data-open="${esc(p.document_path||p.document)}">Open ${esc(p.document)} in editor ↗</button></div>`:''}
+    ${qs.length?`<div class="sec"><h4>Open questions (answer in your comment)</h4>${qs.map(q=>`<div class="finding"><span class="pill warn">?</span><div>${esc(q)}</div></div>`).join('')}</div>`:''}
+    ${p.excerpt?`<div class="sec"><h4>${esc(p.document||what)}</h4><div class="md doc">${md(p.excerpt)}</div></div>`:''}
+    <div class="approve-card sec"><b>Your decision</b><textarea data-c="${a.id}" placeholder="${qs.length?'Answers to the open questions (added to the spec as clarifications)…':'Comment: what should change (required to request changes)…'}"></textarea>
+    <div class="btnrow"><button class="ok" data-yes="${a.id}">✓ Approve ${what.toLowerCase()}</button><button class="no" data-no="${a.id}" data-doc="1">↺ Request changes</button></div>
+    <div class="meta hint hidden" data-hint="${a.id}">Write what should change: the ${esc(p.author||'author')} revises the ${what.toLowerCase()} from your comment, then asks you again.</div></div>`;
+}
 function renderApproval(){
   // pending = list of approval records from the company store
   const D=document.getElementById('detail');
@@ -402,6 +434,7 @@ function renderApproval(){
   let h='<div class="anim">';
   for(const a of others){
     const p=a.payload||{};
+    if(a.type==='spec'||a.type==='plan'){ h+=docCard(a,p); continue; }
     h+=`<div class="detail-title"><h3>${esc(a.subject)}</h3><span class="pill warn">${esc(a.type.replace('_',' ').toUpperCase())}</span></div>
      <p class="summary">${a.type==='release'?'All automated gates and agent reviews are complete. Check the results and findings, then approve or reject. Your decision is written to the audit trail.':
        a.type==='budget_override'?`Budget exhausted (${esc(p.scope)}: $${p.spent_usd} of $${p.limit_usd}). Approving raises the limit by $${p.increase_usd} and resumes the work.`:
@@ -421,8 +454,13 @@ function renderApproval(){
   }
   D.innerHTML=h+'</div>';
   D.querySelectorAll('[data-yes]').forEach(b=>b.onclick=()=>vscode.postMessage({type:'decide',id:b.dataset.yes,approved:true,comment:(D.querySelector(`[data-c="${b.dataset.yes}"]`)||{}).value||''}));
-  D.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>vscode.postMessage({type:'decide',id:b.dataset.no,approved:false,comment:(D.querySelector(`[data-c="${b.dataset.no}"]`)||{}).value||''}));
+  D.querySelectorAll('[data-no]').forEach(b=>b.onclick=()=>{
+    const ta=D.querySelector(`[data-c="${b.dataset.no}"]`), c=(ta||{}).value||'';
+    if(b.dataset.doc && !c.trim()){ const hint=D.querySelector(`[data-hint="${b.dataset.no}"]`); if(hint) hint.classList.remove('hidden'); if(ta) ta.focus(); return; }
+    vscode.postMessage({type:'decide',id:b.dataset.no,approved:false,comment:c});
+  });
   const ha=document.getElementById('hireAll'); if(ha) ha.onclick=()=>vscode.postMessage({type:'approveHires'});
+  D.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>vscode.postMessage({type:'openFile',path:b.dataset.open}));
 }
 
 // ---------- playback ----------

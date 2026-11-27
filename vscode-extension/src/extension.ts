@@ -29,6 +29,7 @@ let state: any = { company: null, agents: [], projects: [], approvals: [] };
 const liveEvents: any[] = [];
 let trees: { company: CompanyTree; projects: ProjectsTree; approvals: ApprovalsTree; stacks: StacksTree };
 let stackInfo: any = { stacks: [], checks: [] };
+let graphInfo: any = { enabled: true, installed: false, built: false };
 
 // ====================================================================== activation
 export function activate(context: vscode.ExtensionContext) {
@@ -76,6 +77,8 @@ export function activate(context: vscode.ExtensionContext) {
   });
   reg("agenticSdlc.installDependencies", () => installDependencies());
   reg("agenticSdlc.cancel", () => cancelRun());
+  reg("agenticSdlc.buildGraph", () => buildGraph());
+  reg("agenticSdlc.openGraph", () => openGraph());
 
   context.subscriptions.push(vscode.workspace.onDidChangeWorkspaceFolders(() => {
     activeRoot = workspaceRoot();
@@ -130,6 +133,8 @@ async function env(withKey: boolean): Promise<EngineEnv | undefined> {
     pmdPath: cfg<string>("pmdPath", "") || undefined,
     store: cfg<string>("companyStore", "") || undefined,
     targetOrg: cfg<string>("salesforceTargetOrg", "") || undefined,
+    playbook: cfg<string>("playbook", "specDriven") === "classic" ? "classic" : "spec-driven",
+    codebaseGraph: cfg<string>("codebaseGraph", "auto") === "off" ? "off" : "auto",
   };
 }
 
@@ -449,8 +454,16 @@ async function afterRun(root: string, status?: string) {
     const msg = hires.length && hires.length === pending.length
       ? `Agentic SDLC: ${hires.length} agent(s) are waiting to be hired before work can start.`
       : `Agentic SDLC: ${pending.length} decision(s) waiting for you (${[...new Set(pending.map((a: any) => a.type))].join(", ")}).`;
-    const pick = await vscode.window.showInformationMessage(msg, ...actions);
+    const docReview = pending.find((a: any) => (a.type === "spec" || a.type === "plan") && a.payload?.document_path);
+    if (docReview) { actions.push(`Open ${docReview.type}`); }
+    const pick = await vscode.window.showInformationMessage(
+      docReview ? `${msg} Review the ${docReview.type} (${docReview.payload.document}) and approve it or request changes.` : msg,
+      ...actions);
     if (pick === "Approve all hires") { await approveAllHires(); }
+    if (docReview && pick === `Open ${docReview.type}`) {
+      ensurePanel().reveal();
+      await vscode.window.showTextDocument(vscode.Uri.file(docReview.payload.document_path), { preview: false });
+    }
     if (pick === "Review") { ensurePanel().reveal(); await vscode.commands.executeCommand("agenticSdlc.approvals.focus"); }
   } else if (status === "paused") {
     const reason = state.projects.find((p: any) => p.status === "paused")?.paused_reason || "the agent runtime is unavailable";
@@ -497,11 +510,38 @@ function setStatus(text: string, hideAfterMs?: number) {
   if (hideAfterMs) { setTimeout(() => { if (status.text === text) { status.hide(); } }, hideAfterMs); }
 }
 
+// ====================================================================== codebase graph
+async function buildGraph() {
+  const root = activeRoot;
+  const e = await env(false);
+  if (!root || !e) { return; }
+  const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification,
+    title: "Agentic SDLC: mapping the codebase (Graphify)…" }, () => engineCall(e, ["graph", "build", "-w", root], 600000));
+  const msg = (r.stdout || r.stderr).trim().split("\n").pop() || "";
+  if (r.code !== 0) { vscode.window.showErrorMessage(`Agentic SDLC: ${msg}`); } else {
+    vscode.window.showInformationMessage(`Agentic SDLC: ${msg}`, "Open graph").then(p => { if (p) { openGraph(); } });
+  }
+  await refreshAll();
+}
+
+function openGraph() {
+  const html = path.join(activeRoot || "", "graphify-out", "graph.html");
+  if (!fs.existsSync(html)) { return vscode.window.showWarningMessage("No graph yet: run 'Build codebase graph'."); }
+  vscode.env.openExternal(vscode.Uri.file(html));
+}
+
 // ====================================================================== approvals
 async function decide(id: string, approved: boolean, comment?: string) {
   const root = activeRoot;
   const e = await env(false);
   if (!root || !e) { return; }
+  const kind = (state.approvals || []).find((a: any) => a.id === id)?.type;
+  if (!approved && (kind === "spec" || kind === "plan") && !comment) {
+    comment = await vscode.window.showInputBox({
+      prompt: `What should change in the ${kind}? The author revises it from your comment, then asks you again.`,
+      ignoreFocusOut: true, validateInput: v => v.trim() ? undefined : "A comment is required to request changes" });
+    if (!comment) { return; }
+  }
   if (comment === undefined) {
     comment = await vscode.window.showInputBox({
       prompt: approved ? "Approval comment (optional)" : "Why are you rejecting? (recorded in the audit trail)",
@@ -554,6 +594,9 @@ async function refreshAll() {
     }
     try { stackInfo = await engineJson(e, ["stacks", "-w", root]); } catch (err: any) {
       output.appendLine(`stacks: ${err.message}`);
+    }
+    try { graphInfo = await engineJson(e, ["graph", "status", "-w", root]); } catch (err: any) {
+      output.appendLine(`graph: ${err.message}`);
     }
   }
   vscode.commands.executeCommand("setContext", "agenticSdlc.hasCompany", !!state.company);
@@ -627,7 +670,8 @@ class CompanyTree extends BaseTree<vscode.TreeItem> {
 class ProjectItem extends vscode.TreeItem {
   constructor(public readonly project: any) {
     super(project.title, vscode.TreeItemCollapsibleState.Collapsed);
-    this.description = `${project.status.replace("_", " ")}${project.stacks?.length ? " · " + project.stacks.join(", ") : ""}`;
+    this.description = `${project.status.replace("_", " ")}${project.stacks?.length ? " · " + project.stacks.join(", ") : ""}${
+      project.playbook === "spec-driven" ? " · SDD" : ""}`;
     this.iconPath = icon(project.status);
     this.contextValue = project.trace ? "project.withTrace" : "project";
     this.tooltip = new vscode.MarkdownString(`**${project.title}**\n\nStatus: ${project.status}\n\nStacks: ${
@@ -647,11 +691,16 @@ class TaskItem extends vscode.TreeItem {
 
 class DocItem extends vscode.TreeItem {
   constructor(file: string, artifactsRoot: string) {
-    super(path.relative(artifactsRoot, file) || path.basename(file), vscode.TreeItemCollapsibleState.None);
+    const inArtifacts = !!artifactsRoot && !path.relative(artifactsRoot, file).startsWith("..");
+    super(inArtifacts ? path.relative(artifactsRoot, file) : path.basename(file), vscode.TreeItemCollapsibleState.None);
     const name = path.basename(file);
+    const specDir = /[\\/]specs[\\/]([^\\/]+)[\\/]/.exec(file)?.[1];
     this.description = name === "requirements.md" ? "epic, user stories, acceptance criteria"
+      : name === "spec.md" ? `spec · ${specDir}` : name === "plan.md" ? `plan · ${specDir}`
+      : name === "tasks.md" ? `tasks · ${specDir}` : name === "constitution.md" ? "project principles"
       : name === "design.md" ? "solution design" : name === "RELEASE_NOTES.md" ? "release notes" : undefined;
-    this.iconPath = new vscode.ThemeIcon(name === "requirements.md" ? "checklist" : "file-text");
+    this.iconPath = new vscode.ThemeIcon(name === "requirements.md" || name === "spec.md" ? "checklist"
+      : name === "tasks.md" ? "tasklist" : name === "constitution.md" ? "law" : "file-text");
     this.command = { command: "vscode.open", title: "Open", arguments: [vscode.Uri.file(file)] };
     this.tooltip = file;
   }
@@ -720,6 +769,16 @@ class StacksTree extends BaseTree<vscode.TreeItem> {
     for (const s of stackInfo.stacks || []) {
       items.push(new InfoItem(s.name, s.evidence.join(", "), "layers", s.skill ? `Stack skill: ${s.skill}` : undefined));
     }
+    const g = graphInfo || {};
+    const graph = new InfoItem("Codebase graph (Graphify)",
+      !g.enabled ? "off (setting)" : !g.installed ? "not installed · pip install graphifyy"
+        : g.built ? `${g.nodes} nodes · ${g.edges} edges` : "not built yet",
+      g.built ? "type-hierarchy" : "circuit-board",
+      "Existing products are mapped into a knowledge graph so agents reuse existing code and reviewers see the blast radius.");
+    graph.contextValue = g.built ? "graph.built" : "graph";
+    graph.command = g.built ? { command: "agenticSdlc.openGraph", title: "Open graph" }
+      : g.installed && g.enabled ? { command: "agenticSdlc.buildGraph", title: "Build graph" } : undefined;
+    items.push(graph);
     for (const c of stackInfo.checks || []) {
       const it = new InfoItem(c.name, `${c.kind} · ${c.blocking ? "blocking" : "advisory"}${c.installed ? "" : " · not installed"}`,
         c.installed ? "beaker" : "warning", c.command);

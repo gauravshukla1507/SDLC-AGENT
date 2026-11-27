@@ -4,7 +4,8 @@ const assert = require("assert");
 const fs = require("fs"); const os = require("os"); const path = require("path");
 const { EngineRun, engineCall, engineJson } = require("../out/runner");
 
-const env = { python: process.env.PYTHON || "python3", engineDir: path.join(__dirname, "..", "orchestrator") };
+// the recorded fixtures used here were made with the classic playbook (test/sdd.test.js covers spec-driven)
+const env = { python: process.env.PYTHON || "python3", engineDir: path.join(__dirname, "..", "orchestrator"), playbook: "classic" };
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-runner-"));
 const SAMPLE = process.env.SAMPLE || "node";
 const FIXTURES = { node: "node-late-fees", python: "python-promo-codes", salesforce: "salesforce-closed-won" };

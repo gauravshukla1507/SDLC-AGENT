@@ -22,10 +22,49 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
  │                                 ├ Requirements, Security, Release                         │
  └───────────────────────────────────────────┬─────────────────────────────────────────────┘
                                               │ one playbook for every stack
-   Requirements → Architect → Developer ∥ Tester → VERIFY → ENVIRONMENT → Reviewer ∥ Security → human approval → Release
+   spec-driven (default):  MAP CODEBASE (Graphify) → constitution → SPEC → you review → PLAN + TASKS → you review
+                           → Tester (tests first) ∥ Developer → VERIFY → SPEC COVERAGE → ENVIRONMENT
+                           → Reviewer ∥ Security (with blast radius) → human approval → Release
+   classic:                Requirements → Architect → Developer ∥ Tester → VERIFY → ENVIRONMENT → Reviewer ∥ Security → approval → Release
                                               ▲
    repository → stack detection → stack profile + conventions (skills) + verification plan (the stack's own tools)
 ```
+
+## Spec-driven development (default)
+
+The team develops **spec-first**: the specification is the source of truth, and code and tests are derived from it
+and checked against it. Files follow the [GitHub Spec Kit](https://github.com/github/spec-kit) layout and are
+committed in your repository:
+
+| File | Written by | Content |
+|---|---|---|
+| `.specify/memory/constitution.md` | Architect (once per repository) | Non-negotiable principles derived from your code base and conventions |
+| `specs/NNN-feature/spec.md` | Requirements agent | User stories, acceptance criteria `AC-n` (Given/When/Then), FRs, success criteria, `[NEEDS CLARIFICATION]` questions, traceability. No technology. |
+| `specs/NNN-feature/plan.md` | Architect | Technical context, constitution check, existing components to reuse, design, files, risks/blast radius |
+| `specs/NNN-feature/tasks.md` | Architect (Developer ticks them off) | Ordered, test-first tasks `T001…`, `[P]` = parallel, each linked to AC ids |
+
+- **You review the spec and the plan** before any code is written. *Approve* (your comment answers the open
+  questions and is added to the spec as a clarification) or *Request changes* (your comment goes back to the author,
+  who revises the document; you're asked again).
+- **Tests first:** the Test agent writes a test for every acceptance criterion from the spec alone, naming its AC id.
+- **Spec coverage gate:** after verification, every `AC-n` in the spec must be referenced by a test; missing ones
+  go back to the Test agent.
+- Turn the reviews off per company with `"governance": {"spec_approval": false, "plan_approval": false}`.
+- The previous flow is still available: `--playbook classic` (or the `agenticSdlc.playbook` setting).
+
+## Existing products: codebase graph (Graphify)
+
+When you work on an existing code base, the first step maps it into a knowledge graph with
+[Graphify](https://pypi.org/project/graphifyy/) (`pip install graphifyy`; local AST extraction, no API calls, the
+`graphify-out/` folder is added to `.gitignore`). The agents then get:
+
+- the **architecture summary** (god nodes, communities, import cycles) for the constitution, plan and review;
+- the **existing code related to the feature** (graph query from the spec) so the plan reuses and extends it;
+- the **blast radius** of every changed existing file (callers and dependants) for code review and security.
+
+New applications skip the step, and so does a machine without Graphify (shown as *skipped*, never as passed).
+`AGENTIC_GRAPHIFY=off` (or the `agenticSdlc.codebaseGraph` setting) disables it. From the CLI:
+`agentic.py graph build|status|query <question>|affected <files>|summary -w <repo>`.
 
 ## Use your Claude subscription (no API key)
 
@@ -90,8 +129,8 @@ python agentic.py dashboard -w ~/work/expense-engine
 
 | Component | Test |
 |---|---|
-| orchestrator | `cd orchestrator && python -m pytest -q` (35 tests, including the subscription runtime against a stand-in Claude Code CLI) |
-| vscode-extension | `cd vscode-extension && npm ci && npm test` (runner protocol and extension smoke test); `npm run test:webview` (needs Playwright) |
+| orchestrator | `cd orchestrator && python -m pytest -q` (51 tests: classic and spec-driven playbooks, spec revision loop, spec coverage, Graphify, subscription runtime against a stand-in Claude Code CLI) |
+| vscode-extension | `cd vscode-extension && npm ci && npm test` (runner protocol, spec-driven flow with *request changes*, extension smoke test); `npm run test:webview` (needs Playwright) |
 
 CI (`.github/workflows/ci.yml`) runs both and publishes the `.vsix` as a build artifact.
 

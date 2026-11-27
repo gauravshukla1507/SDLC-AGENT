@@ -30,6 +30,15 @@ from .store import Store, new_id, now
 TERMINAL = {"done", "cancelled", "failed"}
 
 
+def node_id(step) -> str:
+    """UI node for a step: the agent's seat, the gate, or the human review (release approval = human_gate)."""
+    if step.kind == "agent":
+        return step.role
+    if step.kind == "approval":
+        return "human_gate" if step.approval_type == "release" else step.key
+    return step.key
+
+
 class Engine:
     def __init__(self, store: Store, company: dict, playbook: Playbook, workspace: Path, *, approver=None,
                  replay=None, max_fix_iterations: int = 3, log=print, on_event=None, gate_options: dict | None = None,
@@ -91,18 +100,31 @@ class Engine:
         self._log("orchestrator", "project.created", f"goal:{gid}", title=title, playbook=self.playbook.name,
                   scaffolded=scaffolded)
 
-        steps = self.playbook.steps()
+        steps = self.playbook.steps(self.ws)
+        fvars = self.playbook.feature_vars(self.ws, title)
+        if fvars:
+            self._log("orchestrator", "project.vars", f"goal:{gid}", **fvars)
+        fmt = (lambda v: v.format(**fvars) if isinstance(v, str) else v) if fvars else (lambda v: v)  # noqa: E731
+        first_agent = next((s.key for s in steps if s.receives_request), None) or \
+            next(s.key for s in steps if s.kind == "agent")
         ids = {s.key: new_id("task") for s in steps}
         for s in steps:
             self.store.insert("tasks", {
                 "id": ids[s.key], "company_id": self.company["id"], "goal_id": gid, "parent_id": None,
-                "key": s.key, "title": s.title, "kind": s.kind, "assignee": s.role or "orchestrator",
+                "key": s.key, "title": fmt(s.title), "kind": s.kind, "assignee": s.role or "orchestrator",
                 "status": "todo", "deps": [ids[d] for d in s.deps],
-                "spec": {"inputs": list(s.inputs), "with_context": s.with_context,
-                         "gateway_action": s.gateway_action, "request": request if s.key == steps[0].key else None},
+                "spec": {"inputs": [fmt(i) for i in s.inputs], "with_context": s.with_context,
+                         "gateway_action": s.gateway_action, "vars": fvars,
+                         "approval_type": s.approval_type, "document": fmt(s.document),
+                         "revise_role": next((t.role for t in steps if t.key == s.revise_step), None),
+                         "request": request if s.key == first_agent else None},
                 "created": now(), "updated": now()})
-        nid = lambda s: s.role if s.kind == "agent" else "human_gate" if s.kind == "approval" else s.key  # noqa: E731
-        self._event("plan", graph=[{"id": nid(s), "after": [nid(_step(steps, d)) for d in s.deps]} for s in steps],
+        graph = {}
+        for s in steps:   # one node per agent/gate; an agent with several steps keeps all their dependencies
+            node = graph.setdefault(node_id(s), {"id": node_id(s), "after": []})
+            node["after"] += [n for n in (node_id(_step(steps, d)) for d in s.deps)
+                              if n not in node["after"] and n != node["id"]]
+        self._event("plan", graph=list(graph.values()),
                     nodes=self.nodes(), title=title, project_id=gid)
         self._log("orchestrator", "plan.created", f"goal:{gid}", tasks=[s.key for s in steps])
         return self.goal
@@ -120,6 +142,10 @@ class Engine:
         for t in self.store.all("SELECT * FROM tasks WHERE goal_id=? AND status='in_progress'", goal_id):
             self.store.release(t["id"], "todo")
             self._log("orchestrator", "task.recovered", f"task:{t['key']}", previous_owner=t["checked_out_by"])
+        if self.replay is not None and hasattr(self.replay, "skip"):   # recorded runs continue where they stopped
+            for r in self.store.all("SELECT agent_key, COUNT(*) AS n FROM runs WHERE task_id IN "
+                                    "(SELECT id FROM tasks WHERE goal_id=?) GROUP BY agent_key", goal_id):
+                self.replay.skip(r["agent_key"], r["n"])
 
     # ------------------------------------------------------------ scheduler
     def tasks(self) -> list[dict]:
@@ -236,6 +262,8 @@ class Engine:
         lines = ["# Why this work matters (goal ancestry)"]
         lines += [f"{'  ' * i}- [{g['level']}] {g['title']}" for i, g in enumerate(chain)]
         lines += [f"\n# Your task\n{task['title']} (task {task['key']}, you are {agent['name']}, {agent['title']})"]
+        for k, v in ((task.get("spec") or {}).get("vars") or {}).items():
+            lines.append(f"{k}: {v}")
         return "\n".join(lines)
 
     def _files(self, prefixes: tuple[str, ...] | list[str]) -> dict[str, str]:
@@ -262,6 +290,9 @@ class Engine:
                          "\n".join(f'<file path="{k}">\n{v}</file>' for k, v in bundle.items()))
         if spec.get("with_context"):
             parts.append(self.playbook.project_context(self.ws))
+            extra = self.playbook.task_context(self.ws, task, self.goal, bundle or self._files(("*",)))
+            if extra:
+                parts.append(extra)
         if spec.get("feedback"):
             parts.append(spec["feedback"])
         prompt = "\n\n".join(p for p in parts if p)
@@ -379,7 +410,31 @@ class Engine:
         self.store.release(task["id"], "done", _slim(result))
 
     # ---- approvals
+    def _run_document_approval(self, task: dict):
+        """Human review of a document (spec, plan): approve, or request changes that the author revises."""
+        spec = task["spec"] or {}
+        kind, doc = spec.get("approval_type"), spec.get("document")
+        if not self.governance.spec.get(f"{kind}_approval", True):
+            self.store.release(task["id"], "done", {"approved": True, "approver": "policy", "comment": "auto"})
+            return
+        content = self._files(("*",)).get(doc, "")
+        questions = [ln.strip() for ln in content.splitlines() if "NEEDS CLARIFICATION" in ln.upper()]
+        author = next((t for t in reversed(self.tasks()) if t["status"] == "done" and t["kind"] == "agent"
+                       and doc in ((t["result"] or {}).get("files") or [])), None)
+        payload = {"project": self.goal["title"], "document": doc,
+                   "document_path": str(self.playbook.physical_path(doc, self.ws, self.artifacts)) if doc else None,
+                   "summary": ((author or {}).get("result") or {}).get("summary"),
+                   "author": (self._agent(author["assignee"]) or {}).get("name") if author else None,
+                   "questions": questions, "revision": task["attempts"],
+                   "excerpt": content[:6000]}
+        apr = self.governance.request(kind, f"Review {kind}: '{self.goal['title']}'"
+                                      + (f" (revision {task['attempts']})" if task["attempts"] else ""),
+                                      payload, task_id=task["id"])
+        self._apply_approval_to_task(task, apr)
+
     def _run_approval_task(self, task: dict):
+        if (task["spec"] or {}).get("approval_type", "release") != "release":
+            return self._run_document_approval(task)
         done = [t for t in self.tasks() if t["status"] == "done" and t["result"]]
         gates = [t["result"] for t in done if t["kind"] == "gate"]
         reviews = {t["assignee"]: t["result"].get("verdict") for t in done if t["kind"] == "agent"
@@ -403,6 +458,8 @@ class Engine:
         if apr["status"] == "pending":
             return self._block(task, f"waiting for approval {apr['id']}", approval=apr["id"])
         approved = apr["status"] == "approved"
+        if task["kind"] == "approval" and apr["type"] in ("spec", "plan"):
+            return self._apply_document_decision(task, apr, approved)
         if task["kind"] == "approval":
             self.store.release(task["id"], "done" if approved else "cancelled",
                                {"approved": approved, "approver": apr["decided_by"], "comment": apr["comment"]})
@@ -410,6 +467,51 @@ class Engine:
                         time=apr["decided"])
             if not approved:
                 self._cancel_remaining()
+
+    def _apply_document_decision(self, task: dict, apr: dict, approved: bool):
+        spec = task["spec"] or {}
+        doc = spec.get("document")
+        if approved:
+            if apr.get("comment") and doc:   # the approver's answers to open questions become part of the document
+                path = self.playbook.physical_path(doc, self.ws, self.artifacts)
+                if path.exists() and "NEEDS CLARIFICATION" in path.read_text(encoding="utf-8"):
+                    text = path.read_text(encoding="utf-8").rstrip() + \
+                        f"\n\n## Clarifications\n\n- {apr['decided'][:10]} ({apr['decided_by']}): {apr['comment']}\n"
+                    path.write_text(text, encoding="utf-8")
+                    self.store.insert("work_products", {"id": new_id("wp"), "company_id": self.company["id"],
+                                                        "task_id": task["id"], "path": doc,
+                                                        "physical_path": self._rel(path), "content": text,
+                                                        "created": now()})
+            self.store.release(task["id"], "done", {"approved": True, "approver": apr["decided_by"],
+                                                    "comment": apr["comment"], "document": doc})
+            self._event("human_gate", approved=True, approver=apr["decided_by"], comment=apr["comment"],
+                        time=apr["decided"], document=doc, review=apr["type"], node=task["key"])
+            return
+        # changes requested: the author revises, then the same approval is asked again
+        role = spec.get("revise_role")
+        attempts = task["attempts"] + 1
+        if not role or attempts > self.max_fix + 2:
+            self.store.release(task["id"], "cancelled", {"approved": False, "approver": apr["decided_by"],
+                                                         "comment": apr["comment"]})
+            self._event("human_gate", approved=False, approver=apr["decided_by"], comment=apr["comment"],
+                        time=apr["decided"], document=doc, review=apr["type"], node=task["key"])
+            return self._cancel_remaining()
+        revise_id = new_id("task")
+        self.store.insert("tasks", {
+            "id": revise_id, "company_id": self.company["id"], "goal_id": task["goal_id"], "parent_id": task["id"],
+            "key": f"revise-{task['key']}-{attempts}", "title": f"Revise {doc} (review round {attempts})",
+            "kind": "agent", "assignee": role, "status": "todo", "deps": [],
+            "spec": {"inputs": ["*"], "with_context": True, "vars": spec.get("vars"),
+                     "feedback": f"The human reviewer requested changes to {doc}:\n\n{apr['comment'] or '(no comment)'}"
+                                 f"\n\nRevise {doc} (and any document that depends on it) and return the full files."},
+            "created": now(), "updated": now()})
+        self.store.release(task["id"], "todo", spec={**spec, "approval_id": None, "blocked_reason": None},
+                           attempts=attempts, deps=task["deps"] + [revise_id])
+        self._event("route", reason=f"{apr['type']}_changes_requested", to=role,
+                    to_name=(self._agent(role) or {}).get("name", role), iteration=attempts,
+                    gate=f"{apr['type'].title()} review")
+        self._log(f"human:{apr['decided_by']}", "document.changes_requested", f"task:{task['key']}",
+                  document=doc, comment=apr["comment"])
 
     def _block(self, task, reason, approval=None, **extra):
         spec = {**(task["spec"] or {}), "blocked_reason": reason, "approval_id": approval}
@@ -470,17 +572,26 @@ class Engine:
 
     def nodes(self) -> list[dict]:
         """Pipeline description for UIs (run panel, replay page)."""
-        steps = self.playbook.steps()
+        steps = self.playbook.steps(self.ws)
         siblings = {s.key for s in steps if sum(1 for t in steps if t.deps == s.deps) > 1}
         agent = self._agent
-        return [{"id": s.role if s.kind == "agent" else "human_gate" if s.kind == "approval" else s.key,
+        seen, unique = set(), []
+        for s in steps:
+            if node_id(s) not in seen:
+                seen.add(node_id(s))
+                unique.append(s)
+        steps = unique
+        return [{"id": node_id(s),
                  "ic": {"requirements": "RQ", "architect": "AR", "developer": "DV", "tester": "TS", "reviewer": "CR",
-                        "security": "SC", "release": "RL", "verify": "VF", "environment": "EN"}.get(
+                        "security": "SC", "release": "RL", "verify": "VF", "environment": "EN", "map": "GR",
+                        "spec_coverage": "AC"}.get(
                      s.role or s.key, "HU" if s.kind == "approval" else (s.role or s.key)[:2].upper()),
                  "nm": (agent(s.role) or {}).get("name") or self.playbook.roles[s.role].name if s.kind == "agent"
                  else s.title.split(" (")[0],
                  "rl": self.playbook.roles[s.role].description if s.kind == "agent" else
-                 ("Runs the stack's own tools" if s.kind == "gate" else "Accountable human decides"),
+                 ({"map": "Codebase knowledge graph (Graphify)", "spec_coverage": "Every acceptance criterion has a test"}.get(
+                     s.key, "Runs the stack's own tools") if s.kind == "gate" else
+                  "Accountable human decides"),
                  "para": s.key in siblings} for s in steps]
 
     def trace(self, status: str) -> dict:
