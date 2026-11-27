@@ -443,3 +443,32 @@ def test_api_runtime_without_key_pauses_with_hint(tmp_path, monkeypatch):
     engine.start_project("Add a hello endpoint", title="Hello")
     assert engine.run() == "paused"
     assert "claude-subscription" in engine.paused_reason
+
+
+# ------------------------------------------------------------------ robustness found in a real run
+def test_request_pointing_at_a_document_uses_its_content(tmp_path):
+    ws = tmp_path / "repo"
+    (ws / "docs").mkdir(parents=True)
+    brd = ROOT.parent / "examples" / "BRD-expense-claim-policy-engine.md"
+    (ws / "docs" / "brd.md").write_text(brd.read_text())
+    sys.path.insert(0, str(ROOT))
+    import agentic
+    text = agentic.expand_file_reference("use brd.md", ws)
+    assert "BR-02 Receipt" in text and "AC-12" in text
+    with pytest.raises(Exception, match="no such file"):
+        agentic.expand_file_reference("use missing.docx", ws)
+    assert agentic.expand_file_reference("Add a health endpoint", ws) == "Add a health endpoint"
+
+
+def test_resume_recovers_tasks_orphaned_by_a_dead_process(tmp_path):
+    store, company, engine = setup(tmp_path, PY, gov.auto_approver("Lead"))
+    design = next(t for t in engine.tasks() if t["key"] == "design")
+    req = next(t for t in engine.tasks() if t["key"] == "requirements")
+    store.release(req["id"], "done", {"summary": "s"})
+    store.update("tasks", "id", design["id"], status="in_progress", checked_out_by="architect")   # process died
+    e2 = Engine(store, company, get_playbook(), tmp_path / "ws", approver=gov.auto_approver("Lead"),
+                replay=ReplayLLM(SAMPLES / PY / "recording.json"), log=quiet)
+    e2.replay.queues["requirements"].pop(0)                                                       # already done
+    e2.attach(engine.goal["id"])
+    assert any(r["action"] == "task.recovered" for r in store.all("SELECT action FROM activity"))
+    assert e2.run() == "released"

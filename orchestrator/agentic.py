@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import sys
 import threading
@@ -122,6 +123,28 @@ def replay_for(ws: Path, explicit: str | None):
     return None
 
 
+DOC_REF = re.compile(r"[\w./\\ -]*?[\w-]+\.(?:md|markdown|txt|docx|pdf)\b", re.I)
+
+
+def expand_file_reference(request: str, ws: Path) -> str:
+    """A short request that only points at a document ("use brd.md") gets the document's content: agents
+    cannot open files they are merely told about."""
+    if len(request) > 300:
+        return request
+    for m in DOC_REF.finditer(request):
+        name = Path(m.group(0).strip().split()[-1])
+        candidates = [ws / name, Path.cwd() / name]
+        if ws.exists():
+            candidates += [ws / f for f in stacks.walk_files(ws) if Path(f).name.lower() == name.name.lower()]
+        for cand in candidates:
+            if Path(cand).is_file():
+                out(f"Request refers to {Path(cand).name}: using the document's content as the requirements.")
+                return read_requirements(cand)
+        raise DocumentError(f"The request mentions '{name}' but no such file was found in {ws}. "
+                            "Pass the document itself with --requirements <path>.")
+    return request
+
+
 def exit_code(status: str) -> int:
     return {"released": 0, "waiting_approval": 2, "escalated": 2, "paused": 3}.get(status, 1)
 
@@ -155,7 +178,11 @@ def _start(args, replay=None, request=None, title=None):
     hire_agents(store, company, engine.governance)
     if not request:
         if args.request:
-            request = args.request
+            try:
+                request = expand_file_reference(args.request, ws)
+            except DocumentError as exc:
+                out(f"Cannot read requirements: {exc}")
+                return 1
         else:
             try:
                 request = read_requirements(args.requirements)

@@ -59,6 +59,8 @@ def company_state(store, company: dict, recent_approvals: int = 25) -> dict:
             "paused_reason": paused_reason, "stacks": (det or {}).get("details", {}).get("stacks", []),
             "spent_usd": round(g["spent_usd"] or 0, 6), "budget_usd": g["budget_usd"],
             "trace": str(trace) if trace.exists() else None,
+            "documents": sorted(str(f) for f in trace.parent.rglob("*") if f.is_file()
+                                and f.suffix in (".md", ".yml", ".yaml", ".xml") ) if trace.parent.exists() else [],
             "tasks": [{"id": t["id"], "key": t["key"], "title": t["title"], "kind": t["kind"],
                        "assignee": t["assignee"], "status": t["status"], "attempts": t["attempts"],
                        "summary": ((t["result"] or {}).get("summary") or "")[:300],

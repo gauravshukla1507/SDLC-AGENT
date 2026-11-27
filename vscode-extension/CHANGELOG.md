@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.2.1
+- **Stories you can find:** each project in the Projects view has a *Documents* group (requirements.md with the epic,
+  user stories and acceptance criteria; design.md; release notes). You're told when the stories are ready, with a
+  button to open them.
+- **Faithful stories:** the Requirements agent now produces an epic and user stories (US-n) with Given/When/Then
+  acceptance criteria, keeps the document's IDs, rules and boundaries verbatim, adds a traceability table, and
+  doesn't invent features.
+- **"use brd.md" works:** a short request that only names a document (for example in *Describe a change*) now loads
+  that document's content. Agents can't open files they are only told about.
+- **No more stuck runs:** tasks left "in progress" by a process that ended (closed window, crash, cancel) are
+  recovered on resume.
+
 ## 1.2.0
 - **Build from a requirements document.** New main command *Build application from requirements document…*
   (also in the Explorer right-click menu) accepts `.md`, `.txt`, `.docx` and `.pdf`. Headings, lists and tables

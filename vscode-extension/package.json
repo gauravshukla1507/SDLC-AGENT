@@ -2,7 +2,7 @@
   "name": "agentic-sdlc",
   "displayName": "Agentic SDLC: AI Delivery Company",
   "description": "Give it a requirements document and an AI delivery company inside VS Code builds the application, on any technology. An orchestrator with an org chart of Claude-powered agents (requirements, architect, developer, tester, reviewer, security, release) detects your stack, briefs the agents with its conventions, verifies every change with the stack's own build/analysis/test tools, enforces budgets and human approvals, and keeps a full audit trail.",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "publisher": "zenlabs",
   "license": "SEE LICENSE IN LICENSE.txt",
   "icon": "media/icon.png",

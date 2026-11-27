@@ -23,8 +23,13 @@ GENERAL = """Engineering principles (apply them in the idiom of the detected sta
 
 ROLES = {
     "requirements": role("requirements", "Requirements Agent", "Story, acceptance criteria, scope", "Business Analyst",
-        """- Turn the business request into a user story with numbered, testable acceptance criteria (AC-1, AC-2 ...).
-- Capture impacted components/data, personas and access, volumes, assumptions and out-of-scope items.
+        """- Turn the requirements document into an epic and user stories (US-1, US-2 ...), each "As a / I want /
+  So that", with numbered, testable acceptance criteria (AC-1, AC-2 ...) in Given/When/Then form.
+- Stay faithful to the document: keep its IDs, rules, numbers and boundaries exactly (if it already has
+  acceptance criteria, reuse them verbatim and assign each to a story). Never invent features it doesn't ask for.
+- Add a traceability table (document rule/requirement -> story -> acceptance criteria), then assumptions,
+  out-of-scope items and open questions for anything ambiguous or missing.
+- Capture impacted components/data, personas and access, and volumes.
 - Write docs/requirements.md.""", GENERAL),
     "architect": role("architect", "Architect Agent", "Design, interfaces, file plan", "Solution Architect",
         """- Use the detected stack. For a greenfield project, choose the stack that fits the request and state it,

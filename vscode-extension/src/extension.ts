@@ -408,7 +408,16 @@ async function launch(args: string[], root: string, info: LaunchInfo) {
 function handleEvent(ev: any, root: string) {
   liveEvents.push(ev);
   post({ type: "event", ev });
-  if (ev.kind === "agent") { setStatus(`$(sync~spin) Agentic SDLC: ${ev.agent_name} finished`); }
+  if (ev.kind === "agent") {
+    setStatus(`$(sync~spin) Agentic SDLC: ${ev.agent_name} finished`);
+    void refreshAll();
+    if (ev.agent === "requirements" && ev.file_paths?.["docs/requirements.md"]) {
+      const file = path.join(root, ev.file_paths["docs/requirements.md"]);
+      vscode.window.showInformationMessage("Agentic SDLC: user stories and acceptance criteria are ready.", "Open stories")
+        .then(pick => { if (pick) { void vscode.window.showTextDocument(vscode.Uri.file(file), { preview: false,
+          viewColumn: vscode.ViewColumn.One }); } });
+    }
+  }
   if (ev.kind === "tool") {
     setStatus(`$(sync~spin) Agentic SDLC: ${String(ev.tool_name || "").split(" (")[0]}: ${ev.passed ? "passed" : ev.skipped ? "skipped" : "failed"}`);
     if (ev.tool === "verify") { publishDiagnostics(ev, root); }
@@ -636,10 +645,38 @@ class TaskItem extends vscode.TreeItem {
   }
 }
 
+class DocItem extends vscode.TreeItem {
+  constructor(file: string, artifactsRoot: string) {
+    super(path.relative(artifactsRoot, file) || path.basename(file), vscode.TreeItemCollapsibleState.None);
+    const name = path.basename(file);
+    this.description = name === "requirements.md" ? "epic, user stories, acceptance criteria"
+      : name === "design.md" ? "solution design" : name === "RELEASE_NOTES.md" ? "release notes" : undefined;
+    this.iconPath = new vscode.ThemeIcon(name === "requirements.md" ? "checklist" : "file-text");
+    this.command = { command: "vscode.open", title: "Open", arguments: [vscode.Uri.file(file)] };
+    this.tooltip = file;
+  }
+}
+
+class DocsGroup extends vscode.TreeItem {
+  constructor(public readonly project: any) {
+    super("Documents", vscode.TreeItemCollapsibleState.Expanded);
+    this.iconPath = new vscode.ThemeIcon("files");
+    this.description = `${project.documents.length} file(s)`;
+  }
+}
+
 class ProjectsTree extends BaseTree<vscode.TreeItem> {
   getChildren(el?: vscode.TreeItem): vscode.TreeItem[] {
     if (!el) { return (state.projects || []).map((p: any) => new ProjectItem(p)); }
-    return el instanceof ProjectItem ? el.project.tasks.map((t: any) => new TaskItem(t)) : [];
+    if (el instanceof ProjectItem) {
+      const docs = el.project.documents?.length ? [new DocsGroup(el.project)] : [];
+      return [...docs, ...el.project.tasks.map((t: any) => new TaskItem(t))];
+    }
+    if (el instanceof DocsGroup) {
+      const root = el.project.trace ? path.dirname(el.project.trace) : "";
+      return el.project.documents.map((f: string) => new DocItem(f, root));
+    }
+    return [];
   }
 }
 

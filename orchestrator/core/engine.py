@@ -115,6 +115,11 @@ class Engine:
         previous = self.artifacts / "trace.json"
         if previous.exists():  # keep one continuous trace across pauses and resumes
             self.events = json.loads(previous.read_text(encoding="utf-8")).get("events", [])
+        # A task left "in_progress" belongs to a process that ended (closed IDE, crash, cancel). Only one
+        # engine drives a project at a time, so on resume such tasks are safely handed back to the queue.
+        for t in self.store.all("SELECT * FROM tasks WHERE goal_id=? AND status='in_progress'", goal_id):
+            self.store.release(t["id"], "todo")
+            self._log("orchestrator", "task.recovered", f"task:{t['key']}", previous_owner=t["checked_out_by"])
 
     # ------------------------------------------------------------ scheduler
     def tasks(self) -> list[dict]:

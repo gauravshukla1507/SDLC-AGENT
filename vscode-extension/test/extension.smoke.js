@@ -27,6 +27,7 @@ const vscode = {
         setTimeout(() => webviewHandler({ type: "decide", id: pending[0].id, approved: true, comment: "Approved in panel" }), 10);
       }
       if (/built, verified and approved/.test(m)) return "Company dashboard";
+      if (/stories and acceptance criteria are ready/.test(m)) return undefined;
       return undefined;
     },
     showWarningMessage: async () => undefined,
@@ -87,7 +88,13 @@ const wait = async (pred, ms = 120000) => { const t = Date.now(); while (!pred()
   const projects = providers["agenticSdlc.projects"].getChildren();
   assert.strictEqual(projects.length, 1);
   assert.match(projects[0].description, /^released · node/);
-  const tasks = providers["agenticSdlc.projects"].getChildren(projects[0]);
+  const children = providers["agenticSdlc.projects"].getChildren(projects[0]);
+  const docsGroup = children.find(c => c.label === "Documents");
+  assert.ok(docsGroup, "project shows its documents (stories)");
+  const docs = providers["agenticSdlc.projects"].getChildren(docsGroup).map(d => d.label);
+  assert.ok(docs.includes("docs/requirements.md") && docs.includes("docs/design.md"), "documents: " + docs);
+  assert.ok(infos.some(m => /user stories and acceptance criteria are ready/.test(m)), "stories announced");
+  const tasks = children.filter(c => c !== docsGroup);
   assert.ok(tasks.length >= 11 && tasks.every(t => t.iconPath.id === "pass-filled"));
   const org = providers["agenticSdlc.company"].getChildren();
   assert.ok(org[0].label === "ZenLabs Delivery" && org.length >= 2);
