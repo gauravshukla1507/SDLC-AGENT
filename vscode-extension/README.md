@@ -3,7 +3,7 @@
 Run a **company of AI agents** inside VS Code that delivers changes to *your* repository, on any technology, with
 you accountable for every release.
 
-Describe a change. The orchestrator plans it as tasks and assigns them to an org chart of Claude-powered agents:
+Give it a requirements document (BRD, PRD or user stories in Markdown, Word or PDF). The orchestrator plans it as tasks and assigns them to an org chart of Claude-powered agents:
 Requirements, Architect, Developer, Tester, Code Review, Security and Release. It detects your stack, briefs every
 agent with its conventions, and verifies each change with the stack's own build, analysis and test tools.
 Failures are routed back to the agent that owns them. You approve hires, the release, budget overrides and risky
@@ -31,14 +31,20 @@ and greenfield projects. Add your own checks in `.agentic-sdlc/verify.json` for 
 
 ## Getting started
 
-1. Activity bar → **Agentic SDLC** → **Run a demo (no sign-in needed)** → pick Node, Python or Salesforce.
-   The same playbook runs every stack. Approve the hires and then the release when asked.
-2. **Use your Claude subscription:** run **Agentic SDLC: Sign in to Claude (use my subscription)**. It installs Claude
+1. **Use your Claude subscription:** run **Agentic SDLC: Sign in to Claude (use my subscription)**. It installs Claude
    Code if needed and opens it; type `/login` and choose your Pro, Max, Team or Enterprise account. Then run
    **Agentic SDLC: Check setup**. No API key is needed. (Prefer per-token billing? Set `agenticSdlc.agentRuntime`
    to `apiKey` and use **Set Anthropic API key**.)
-3. Open any repository and run **Run a business request…**, or right-click a `.md` story → **Run on this file**.
-4. Review the diff on the new `agentic/…` branch, then commit and open a PR as usual. Your CI stays in charge.
+2. **Build from your requirements:** run **Agentic SDLC: Build application from requirements document…**, or
+   right-click a `.md`, `.docx` or `.pdf` in the Explorer. Pick where to build:
+   - **This workspace:** extend the existing code base. Its stack is detected and its conventions followed.
+   - **A new folder:** create a new application. The architect chooses the stack from the document, and the folder
+     becomes a git repository.
+3. Approve the hires (once per repository), follow the run panel, then approve the release.
+4. Review the diff on the new `agentic/…` branch, commit and open a PR as usual. Your CI stays in charge.
+
+For a small change in the current repository, use **Agentic SDLC: Describe a change…** or select text →
+**Run on selected text**.
 
 **Agentic SDLC: Set up company…** creates `.agentic-sdlc/company.json`. Use it to change seats, models and adapters
 (`claude_api`, `claude_code`, `http`), budgets, governance (which actions need approval) and routines.

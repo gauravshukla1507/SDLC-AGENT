@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.0
+- **Build from a requirements document.** New main command *Build application from requirements document…*
+  (also in the Explorer right-click menu) accepts `.md`, `.txt`, `.docx` and `.pdf`. Headings, lists and tables
+  (acceptance criteria) are preserved.
+- Choose where to build: extend **this workspace**, or create a **new application in a new folder**, which becomes
+  a git repository; open it in a new window when done.
+- *Describe a change…* writes a short request for the current repository.
+- Removed the recorded demo mode. Recorded agent answers now exist only as internal test fixtures.
+
 ## 1.1.0
 - **Run on your Claude subscription.** The new default runtime calls Claude Code (`claude -p`) signed in with your
   Pro, Max, Team or Enterprise plan, so no API key is needed. Agents get read-only repository tools, and the API

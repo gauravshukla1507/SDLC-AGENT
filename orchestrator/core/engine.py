@@ -53,7 +53,7 @@ class Engine:
         self._adapters: dict[str, object] = {}
         self.goal: dict | None = None
         self.artifacts: Path | None = None
-        self.events: list[dict] = []     # demo/IDE-compatible trace events
+        self.events: list[dict] = []     # trace events (run panel, replay page)
         self.goal_stacks: list[str] = []
 
     # ------------------------------------------------------------ logging & events
@@ -464,7 +464,7 @@ class Engine:
             return str(p)
 
     def nodes(self) -> list[dict]:
-        """Pipeline description for UIs (run panel, demo page)."""
+        """Pipeline description for UIs (run panel, replay page)."""
         steps = self.playbook.steps()
         siblings = {s.key for s in steps if sum(1 for t in steps if t.deps == s.deps) > 1}
         agent = self._agent

@@ -106,7 +106,7 @@ def deferred_approver(approval: dict) -> None:
     return None
 
 
-def auto_approver(name: str, comment: str = "Auto-approved (demo mode)", types: set[str] | None = None):
+def auto_approver(name: str, comment: str = "Auto-approved by policy", types: set[str] | None = None):
     def _approve(approval: dict):
         if types and approval["type"] not in types:
             return None

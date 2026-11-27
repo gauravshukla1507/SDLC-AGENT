@@ -1,8 +1,7 @@
 """LLM backends.
 
-ClaudeLLM  - live calls to the Anthropic Messages API (the POC's engine).
-ReplayLLM  - replays a recorded run (responses captured earlier) so a client
-             demo can be re-run deterministically without network access.
+ClaudeLLM  - live calls to the Anthropic Messages API (per-token API key).
+ReplayLLM  - replays recorded responses (test fixtures).
 """
 from __future__ import annotations
 

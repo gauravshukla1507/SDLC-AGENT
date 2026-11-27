@@ -5,16 +5,16 @@ The stack is detected from the repository (Salesforce, Java, .NET, Node/TypeScri
 Ruby, PHP, dbt, Terraform, or several at once). Nothing to configure per technology.
 
 Delivery
-  agentic.py run      --request-file story.md -w ./repo        start a project (company created on first use)
+  agentic.py run      --requirements BRD.docx -w ./repo        build from a requirements document (.md .txt .docx .pdf)
+                                                               into an existing repo or a new empty folder
   agentic.py resume   -w ./repo                                continue projects after approvals
-  agentic.py demo     --sample node -w /tmp/demo               recorded run: salesforce | python | node
 
 People
   agentic.py approvals -w ./repo                               what is waiting for a human
   agentic.py approve  <id|all> --as "Name" [--reject] [--comment ...]
 
 Insight
-  agentic.py stacks | state | org | board | budget | activity | dashboard | demo-page | playbook
+  agentic.py stacks | state | org | board | budget | activity | dashboard | replay-page | playbook | doctor
 Company
   agentic.py init | routines [--run-due] | export --out f.json | import f.json
 
@@ -43,6 +43,7 @@ from core import governance as gov  # noqa: E402
 from core.adapters import RUNTIMES, claude_cli, subscription_env  # noqa: E402
 from core.company import create_company, hire_agents, load_spec, org_chart  # noqa: E402
 from core.dashboard import render_dashboard  # noqa: E402
+from core.documents import DocumentError, read_requirements, title_of  # noqa: E402
 from core.engine import Engine  # noqa: E402
 from core.llm import ReplayLLM  # noqa: E402
 from core.playbook import get_playbook  # noqa: E402
@@ -52,7 +53,6 @@ from core.state import company_state  # noqa: E402
 from core.store import Store  # noqa: E402
 
 DEFAULT_SPEC = HERE / "companies" / "default-company.json"
-SAMPLES = {"salesforce": "salesforce-closed-won", "python": "python-promo-codes", "node": "node-late-fees"}
 _OUT = threading.Lock()
 STORE_OVERRIDE: str | None = None
 
@@ -113,7 +113,7 @@ def gate_options(args) -> dict:
 
 
 def replay_for(ws: Path, explicit: str | None):
-    """Demos remember their recording so `resume` can continue them offline."""
+    """Internal (tests): a run started with a recording remembers it so `resume` replays it too."""
     if explicit:
         return ReplayLLM(explicit)
     marker = agentic_dir(ws) / "replay.json"
@@ -145,13 +145,24 @@ def _start(args, replay=None, request=None, title=None):
     if getattr(args, "clean", False) and ws.exists():
         shutil.rmtree(ws)
     ws.mkdir(parents=True, exist_ok=True)
+    if replay is not None:
+        agentic_dir(ws).mkdir(parents=True, exist_ok=True)
+        (agentic_dir(ws) / "replay.json").write_text(json.dumps({"recording": str(replay.path)}), encoding="utf-8")
     store, company = open_company(ws, args.company, args.company_name, create=True)
     engine = Engine(store, company, get_playbook(), ws, approver=make_approver(args.approver), replay=replay,
                     log=out, max_fix_iterations=args.max_fix_iterations, on_event=emitter(args.events),
                     gate_options=gate_options(args), runtime=runtime_of(args))
     hire_agents(store, company, engine.governance)
-    request = request or args.request or Path(args.request_file).read_text(encoding="utf-8")
-    goal = engine.start_project(request, title=title or args.title, budget_usd=args.budget)
+    if not request:
+        if args.request:
+            request = args.request
+        else:
+            try:
+                request = read_requirements(args.requirements)
+            except DocumentError as exc:
+                out(f"Cannot read requirements: {exc}")
+                return 1
+    goal = engine.start_project(request, title=title or args.title or title_of(request), budget_usd=args.budget)
     out(f"Project {goal['id']}: {goal['title']}  (company: {company['name']}; workspace: {ws})")
     status = engine.run()
     if status in ("waiting_approval", "escalated"):
@@ -162,21 +173,7 @@ def _start(args, replay=None, request=None, title=None):
 
 
 def cmd_run(args):
-    return _start(args)
-
-
-def cmd_demo(args):
-    sample = HERE / "samples" / SAMPLES[args.sample]
-    meta = json.loads((sample / "meta.json").read_text(encoding="utf-8"))
-    ws = Path(args.workspace)
-    if args.clean and ws.exists():
-        shutil.rmtree(ws)
-    agentic_dir(ws).mkdir(parents=True, exist_ok=True)
-    (agentic_dir(ws) / "replay.json").write_text(json.dumps({"recording": str(sample / "recording.json")}),
-                                                 encoding="utf-8")
-    args.clean = False
-    return _start(args, replay=ReplayLLM(sample / "recording.json"),
-                  request=(sample / "story.md").read_text(encoding="utf-8"), title=meta["title"])
+    return _start(args, replay=ReplayLLM(args.replay) if args.replay else None)
 
 
 def cmd_resume(args):
@@ -314,9 +311,9 @@ def cmd_dashboard(args):
     return 0
 
 
-def cmd_demo_page(args):
+def cmd_replay_page(args):
     trace = json.loads(Path(args.trace).read_text(encoding="utf-8"))
-    template = (HERE / "core" / "demo_page.html").read_text(encoding="utf-8")
+    template = (HERE / "core" / "replay_page.html").read_text(encoding="utf-8")
     target = Path(args.out or Path(args.trace).with_name("run_replay.html"))
     target.write_text(template.replace("/*__TRACE__*/", json.dumps(trace).replace("</", "<\\/")), encoding="utf-8")
     out(f"Run replay page written to {target}")
@@ -445,19 +442,17 @@ def main(argv=None):
         p.add_argument("--clean", action="store_true", help="Delete the workspace first")
         return p
 
-    p = delivery(common(sub.add_parser("run", help="Start a delivery project")))
+    p = delivery(common(sub.add_parser("run", help="Build from a requirements document (or inline request)")))
     g = p.add_mutually_exclusive_group(required=True)
-    g.add_argument("--request")
-    g.add_argument("--request-file")
+    g.add_argument("--requirements", "--request-file", dest="requirements",
+                   help="Requirements document: .md, .txt, .docx or .pdf")
+    g.add_argument("--request", help="Inline request text")
+    p.add_argument("--replay", help=argparse.SUPPRESS)          # internal: recorded agent answers (tests)
     p.set_defaults(fn=cmd_run)
-
-    p = delivery(common(sub.add_parser("demo", help="Recorded run of a sample (no API key)")))
-    p.add_argument("--sample", choices=sorted(SAMPLES), default="node")
-    p.set_defaults(fn=cmd_demo, approver="auto:Demo Approver")
 
     p = delivery(common(sub.add_parser("resume", help="Continue projects after approvals")))
     p.add_argument("--project", help="Only this project id")
-    p.add_argument("--replay", help="Recording to replay (demos remember theirs automatically)")
+    p.add_argument("--replay", help=argparse.SUPPRESS)
     p.set_defaults(fn=cmd_resume)
 
     p = delivery(common(sub.add_parser("init", help="Create the company and request hiring approvals")))
@@ -483,10 +478,10 @@ def main(argv=None):
     p = common(sub.add_parser("dashboard", help="Write the company dashboard HTML"))
     p.add_argument("--out")
     p.set_defaults(fn=cmd_dashboard)
-    p = common(sub.add_parser("demo-page", help="Write a step-through replay page for a project trace"))
+    p = common(sub.add_parser("replay-page", help="Write a step-through replay page for a project trace"))
     p.add_argument("trace")
     p.add_argument("--out")
-    p.set_defaults(fn=cmd_demo_page)
+    p.set_defaults(fn=cmd_replay_page)
     common(sub.add_parser("playbook", help="Show the delivery playbook")).set_defaults(fn=cmd_playbook)
     p = common(sub.add_parser("doctor", help="Check runtime (subscription / API key) and stack tools"))
     p.add_argument("--runtime", choices=RUNTIMES)

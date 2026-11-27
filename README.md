@@ -58,9 +58,10 @@ Anything else can be verified with your own commands in `.agentic-sdlc/verify.js
 
 | Folder | What it is |
 |---|---|
-| [`orchestrator/`](orchestrator/) | The engine and CLI (`agentic.py`): company store, playbook, stack detection and verification, governance, budgets, adapters, dashboard, demo samples, tests |
+| [`orchestrator/`](orchestrator/) | The engine and CLI (`agentic.py`): company store, playbook, stack detection and verification, governance, budgets, adapters, dashboard, tests |
 | [`vscode-extension/`](vscode-extension/) | **Agentic SDLC** for VS Code: activity-bar views, live run panel, approvals in the IDE, diagnostics, dashboard. It bundles the orchestrator at build time. |
-| [`docs/`](docs/) | Architecture and the Paperclip mapping, plus stakeholder demo pages (`docs/demos/`) |
+| [`docs/`](docs/) | Architecture and the Paperclip mapping |
+| [`examples/`](examples/) | A sample requirements document (BRD) to try it with |
 
 ## Quick start
 
@@ -69,19 +70,20 @@ Anything else can be verified with your own commands in `.agentic-sdlc/verify.js
 cd vscode-extension && npm ci && npm run package
 code --install-extension agentic-sdlc-*.vsix
 ```
-Open the **Agentic SDLC** view in the activity bar → **Run a demo (no API key)** → pick Node, Python or Salesforce.
-Approve the hires and the release when asked, and watch the same playbook deliver all three stacks.
-For real work, run **Agentic SDLC: Sign in to Claude (use my subscription)** once (or set an API key), then **Check setup**, then **Run a business request…** in any repository.
+1. **Agentic SDLC: Sign in to Claude (use my subscription)** (once), then **Agentic SDLC: Check setup**.
+2. **Agentic SDLC: Build application from requirements document…**: pick your BRD/PRD (`.md`, `.docx`, `.pdf`),
+   then choose *this workspace* (extend an existing code base) or *a new folder* (new application).
+3. Approve the hires, follow the run panel, approve the release, then review the diff and commit.
 
 ### Command line
 ```bash
 cd orchestrator && pip install -r requirements.txt
-python agentic.py demo --sample node -w /tmp/demo              # or python | salesforce
-python agentic.py stacks -w ~/work/any-repo                     # detected stacks + verification plan
-python agentic.py run --runtime claude-subscription --request-file story.md -w ~/work/any-repo --approver deferred
-python agentic.py approvals -w ~/work/any-repo && python agentic.py approve all --as "Name" -w ~/work/any-repo
-python agentic.py resume --runtime claude-subscription -w ~/work/any-repo --approver deferred
-python agentic.py dashboard -w ~/work/any-repo
+python agentic.py doctor --runtime claude-subscription --probe
+python agentic.py run --runtime claude-subscription --requirements ../examples/BRD-expense-claim-policy-engine.md \
+       -w ~/work/expense-engine --approver deferred            # new folder = new application
+python agentic.py approvals -w ~/work/expense-engine && python agentic.py approve all --as "Name" -w ~/work/expense-engine
+python agentic.py resume --runtime claude-subscription -w ~/work/expense-engine --approver deferred
+python agentic.py dashboard -w ~/work/expense-engine
 ```
 
 ## Development
@@ -95,8 +97,9 @@ CI (`.github/workflows/ci.yml`) runs both and publishes the `.vsix` as a build a
 
 ## Status
 
-- **Recorded demos:** the bundled demos (Salesforce, Python, Node) replay recorded agent answers; the verification
-  tools run for real. Live runs need a Claude subscription signed in to Claude Code, or an Anthropic API key.
-- **Verified so far:** stacks without a demo (Java, .NET, Go, Rust, Ruby, PHP, dbt, Terraform) are covered by
-  detection tests. Confirm their verification commands on a real repository before relying on them.
-- **Live Claude Code:** the subscription runtime is tested against a stand-in for the Claude Code CLI that uses the real JSON format. Do one probe (`doctor --probe`) and one small live run on your machine first. The `http` adapter hasn't been run against a live service yet.
+- **Recorded test runs:** the automated tests replay recorded agent answers (Salesforce, Python and Node fixtures)
+  while running the real verification tools. Production runs use your Claude subscription or an API key.
+- **Other stacks:** stacks without an end-to-end fixture (Java, .NET, Go, Rust, Ruby, PHP, dbt, Terraform) are
+  covered by detection tests. Confirm their verification commands on a real repository before relying on them.
+- **Live Claude Code:** the subscription runtime is tested against a stand-in Claude Code CLI that uses the real JSON
+  format. Do one `doctor --probe` and one small run on your machine first.

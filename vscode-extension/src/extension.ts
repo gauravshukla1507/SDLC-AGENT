@@ -17,11 +17,6 @@ import * as path from "path";
 import { EngineEnv, EngineRun, engineCall, engineJson } from "./runner";
 
 const SECRET_KEY = "agenticSdlc.anthropicApiKey";
-const SAMPLES: Record<string, string> = {
-  node: "Node.js: invoice late-fee calculator",
-  python: "Python: promo codes at checkout",
-  salesforce: "Salesforce: Closed Won → onboarding handoff",
-};
 
 let ctx: vscode.ExtensionContext;
 let output: vscode.OutputChannel;
@@ -57,10 +52,9 @@ export function activate(context: vscode.ExtensionContext) {
 
   const reg = (id: string, fn: (...a: any[]) => any) =>
     context.subscriptions.push(vscode.commands.registerCommand(id, fn));
+  reg("agenticSdlc.buildFromDocument", (uri?: vscode.Uri) => buildFromDocument(uri));
   reg("agenticSdlc.runRequest", () => runFromPrompt());
-  reg("agenticSdlc.runFile", (uri?: vscode.Uri) => runFromFile(uri));
   reg("agenticSdlc.runSelection", () => runFromSelection());
-  reg("agenticSdlc.runDemo", (sample?: string) => runDemo(sample));
   reg("agenticSdlc.resume", () => resume());
   reg("agenticSdlc.approve", (item?: ApprovalItem) => decideItem(item, true));
   reg("agenticSdlc.reject", (item?: ApprovalItem) => decideItem(item, false));
@@ -151,20 +145,23 @@ async function requireKey(): Promise<boolean> {
     if (claudeCli()) { return true; }
     const pick = await vscode.window.showWarningMessage(
       "Agentic SDLC runs the agents on your Claude subscription through Claude Code, which isn't installed yet.",
-      "Install Claude Code", "Use an API key instead", "Run a demo instead");
+      "Install Claude Code", "Use an API key instead");
     if (pick === "Install Claude Code") { signInToClaude(true); }
     if (pick === "Use an API key instead") {
       await vscode.workspace.getConfiguration("agenticSdlc").update("agentRuntime", "apiKey", vscode.ConfigurationTarget.Global);
       return !!(await setApiKey());
     }
-    if (pick === "Run a demo instead") { await runDemo(); }
     return false;
   }
   if (await ctx.secrets.get(SECRET_KEY) || process.env.ANTHROPIC_API_KEY) { return true; }
   const pick = await vscode.window.showWarningMessage(
-    "Agentic SDLC is set to use an Anthropic API key (setting: agentRuntime = apiKey), and none is set.", "Set API key", "Run a demo instead");
+    "Agentic SDLC is set to use an Anthropic API key (setting: agentRuntime = apiKey), and none is set.", "Set API key",
+    "Use my Claude subscription");
   if (pick === "Set API key") { return !!(await setApiKey()); }
-  if (pick === "Run a demo instead") { await runDemo(); }
+  if (pick === "Use my Claude subscription") {
+    await vscode.workspace.getConfiguration("agenticSdlc").update("agentRuntime", "claudeSubscription", vscode.ConfigurationTarget.Global);
+    return requireKey();
+  }
   return false;
 }
 
@@ -221,7 +218,8 @@ function workspaceRoot(): string | undefined {
   return (owner || folders[0]).uri.fsPath;
 }
 
-function isDemoRoot(root: string): boolean {
+/** Internal: projects started from recorded agent answers (used by the test suite) resume without sign-in. */
+function isRecordedRun(root: string): boolean {
   return fs.existsSync(path.join(root, ".agentic-sdlc", "replay.json"));
 }
 
@@ -239,70 +237,109 @@ function commonRunArgs(): string[] {
 }
 
 // ====================================================================== entry points
-async function runFromPrompt() {
-  const story = await vscode.window.showInputBox({
-    title: "Business request for the agent team",
-    prompt: "Describe the change. The stack is detected from this repository. For long requests use 'Run on file'.",
-    ignoreFocusOut: true, placeHolder: "Customers who pay late should be charged the late fee in our terms…",
-  });
-  if (story?.trim()) { await startProject(story.trim()); }
+const DOC_FILTERS = { "Requirements document": ["md", "markdown", "txt", "docx", "pdf"] };
+
+/** Main flow: a requirements document in, a built and verified application out. */
+async function buildFromDocument(uri?: vscode.Uri) {
+  let doc = uri?.fsPath;
+  if (!doc) {
+    const picked = await vscode.window.showOpenDialog({ canSelectMany: false, filters: DOC_FILTERS,
+      title: "Select the requirements document (BRD, PRD, user stories…)", openLabel: "Use this document" });
+    doc = picked?.[0]?.fsPath;
+  }
+  if (!doc) { return; }
+  const target = await chooseTarget(path.basename(doc));
+  if (!target) { return; }
+  await startProject(target, ["--requirements", doc], path.basename(doc));
 }
 
-async function runFromFile(uri?: vscode.Uri) {
-  const target = uri || vscode.window.activeTextEditor?.document.uri;
-  if (!target) { return vscode.window.showErrorMessage("Open or select a .md/.txt file with the business request."); }
-  const text = (await vscode.workspace.fs.readFile(target)).toString();
-  if (!text.trim()) { return vscode.window.showErrorMessage("That file is empty."); }
-  await startProject(text);
+async function chooseTarget(docName: string): Promise<string | undefined> {
+  const ws = workspaceRoot();
+  const items: (vscode.QuickPickItem & { target: string })[] = [];
+  if (ws) {
+    items.push({ label: `$(repo) Build in this workspace: ${path.basename(ws)}`, target: "workspace",
+      description: "extend the existing code base (the stack is detected from it)" });
+  }
+  items.push({ label: "$(new-folder) Create a new application in a new folder…", target: "new",
+    description: "greenfield: the architect chooses the stack from the document" });
+  const pick = items.length === 1 ? items[0] : await vscode.window.showQuickPick(items,
+    { title: `Where should the agents build ${docName}?` });
+  if (!pick) { return undefined; }
+  if (pick.target === "workspace") { return ws; }
+  const folder = await vscode.window.showOpenDialog({ canSelectFiles: false, canSelectFolders: true,
+    canSelectMany: false, openLabel: "Create the application here", title: "Choose or create an empty folder" });
+  const dir = folder?.[0]?.fsPath;
+  if (!dir) { return undefined; }
+  const entries = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => !f.startsWith(".")) : [];
+  if (entries.length) {
+    const go = await vscode.window.showWarningMessage(
+      `${path.basename(dir)} is not empty (${entries.length} item(s)). The agents will treat it as an existing code base.`,
+      { modal: true }, "Continue");
+    if (go !== "Continue") { return undefined; }
+  }
+  return dir;
+}
+
+async function runFromPrompt() {
+  const root = workspaceRoot();
+  if (!root) { return buildFromDocument(); }
+  const story = await vscode.window.showInputBox({
+    title: "Business request for the agent team",
+    prompt: "Describe the change. For a full requirements document use 'Build application from requirements document'.",
+    ignoreFocusOut: true, placeHolder: "Customers who pay late should be charged the late fee in our terms…",
+  });
+  if (story?.trim()) { await startProject(root, ["--requirements", writeTemp(story)], "request"); }
 }
 
 async function runFromSelection() {
   const ed = vscode.window.activeTextEditor;
   const text = ed && ed.document.getText(ed.selection);
-  if (!text?.trim()) { return vscode.window.showErrorMessage("Select the business request text first."); }
-  await startProject(text);
-}
-
-async function runDemo(sample?: string) {
-  if (!sample) {
-    const pick = await vscode.window.showQuickPick(
-      Object.entries(SAMPLES).map(([k, v]) => ({ label: v, sample: k,
-        description: "recorded agents, real verification, no API key" })),
-      { title: "Agentic SDLC demo: pick a stack. The same playbook runs all of them." });
-    sample = pick?.sample;
-  }
-  if (!sample) { return; }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), `agentic-demo-${sample}-`));
-  await launch(["demo", "--sample", sample, "-w", dir, ...commonRunArgs()], dir,
-    { story: `Demo: ${SAMPLES[sample]}`, title: SAMPLES[sample], mode: "replay", fresh: true });
-}
-
-async function startProject(story: string) {
   const root = workspaceRoot();
-  if (!root) { return vscode.window.showErrorMessage("Open the repository folder you want the agents to work on."); }
+  if (!text?.trim() || !root) { return vscode.window.showErrorMessage("Open the repository and select the requirement text first."); }
+  await startProject(root, ["--requirements", writeTemp(text)], "selection");
+}
+
+function writeTemp(text: string): string {
+  const f = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agentic-request-")), "request.md");
+  fs.writeFileSync(f, text, "utf8");
+  return f;
+}
+
+async function startProject(root: string, requestArgs: string[], label: string) {
   if (!(await requireKey())) { return; }
-  const branch = await prepareGitBranch(root, story);
+  fs.mkdirSync(root, { recursive: true });
+  ensureGitRepo(root);
+  const branch = await prepareGitBranch(root, label);
   if (branch === false) { return; }
-  const storyFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "agentic-request-")), "request.md");
-  fs.writeFileSync(storyFile, story, "utf8");
-  await launch(["run", "--request-file", storyFile, "-w", root, ...commonRunArgs()], root,
-    { story, mode: "live", branch: branch || undefined, fresh: true });
+  await launch(["run", ...requestArgs, "-w", root, ...commonRunArgs()], root,
+    { story: `Requirements: ${label}`, mode: "live", branch: branch || undefined, fresh: true });
 }
 
 async function resume(root = activeRoot) {
   if (!root) { return; }
-  if (!isDemoRoot(root) && !(await requireKey())) { return; }
-  await launch(["resume", "-w", root, ...commonRunArgs()], root, { mode: isDemoRoot(root) ? "replay" : "live", fresh: false });
+  if (!isRecordedRun(root) && !(await requireKey())) { return; }
+  await launch(["resume", "-w", root, ...commonRunArgs()], root, { mode: isRecordedRun(root) ? "replay" : "live", fresh: false });
 }
 
 // ====================================================================== git safety
+/** New application folders become git repositories so every change can be reviewed as a diff. */
+function ensureGitRepo(root: string) {
+  try { git(root, ["rev-parse", "--is-inside-work-tree"]); return; } catch { /* not a repo yet */ }
+  try {
+    git(root, ["init", "-q"]);
+    const ignore = path.join(root, ".gitignore");
+    if (!fs.existsSync(ignore)) { fs.writeFileSync(ignore, ".agentic-sdlc/\nnode_modules/\n__pycache__/\n.venv/\ntarget/\nbin/\nobj/\n"); }
+    output.appendLine(`Initialised a git repository in ${root}`);
+  } catch (e: any) { output.appendLine(`git init skipped: ${e.message}`); }
+}
+
 function git(cwd: string, args: string[]): string {
   return cp.execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 
 async function prepareGitBranch(root: string, story: string): Promise<string | undefined | false> {
   if (!cfg<boolean>("createGitBranch", true)) { return undefined; }
-  try { git(root, ["rev-parse", "--is-inside-work-tree"]); } catch { return undefined; }
+  try { git(root, ["rev-parse", "--is-inside-work-tree"]); git(root, ["rev-parse", "HEAD"]); } catch { return undefined; }
   if (git(root, ["status", "--porcelain"])) {
     const go = await vscode.window.showWarningMessage(
       "You have uncommitted changes. The agents' changes will be mixed with yours on the new branch.",
@@ -386,9 +423,13 @@ async function afterRun(root: string, status?: string) {
   post({ type: "approvals", items: pending });
   if (status === "released") {
     setStatus("$(check) Agentic SDLC: ready for review", 30000);
+    const elsewhere = root !== workspaceRoot();
     const pick = await vscode.window.showInformationMessage(
       "Agentic SDLC: the change is built, verified and approved. Review the diff before you commit.",
-      "Review changes", "Company dashboard", "Replay page");
+      ...(elsewhere ? ["Open application folder"] : ["Review changes"]), "Company dashboard", "Replay page");
+    if (pick === "Open application folder") {
+      await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(root), { forceNewWindow: true });
+    }
     if (pick === "Review changes") { await vscode.commands.executeCommand("workbench.view.scm"); }
     if (pick === "Company dashboard") { await showDashboard(); }
     if (pick === "Replay page") { await openReplayPage(state.projects[0]); }
@@ -633,7 +674,7 @@ class StacksTree extends BaseTree<vscode.TreeItem> {
     if (el) { return []; }
     const items: vscode.TreeItem[] = [];
     const root = activeRoot ? path.basename(activeRoot) : "no folder";
-    items.push(new InfoItem(root, isDemoRoot(activeRoot || "") ? "demo workspace" : "workspace", "folder",
+    items.push(new InfoItem(root, isRecordedRun(activeRoot || "") ? "recorded run" : "workspace", "folder",
       activeRoot));
     if (!stackInfo.stacks?.length) {
       items.push(new InfoItem("Greenfield", "the architect will choose the stack", "sparkle",
@@ -682,7 +723,7 @@ function ensurePanel(): vscode.WebviewPanel {
         } else { vscode.window.showWarningMessage(`File not found: ${abs}`); }
         break;
       }
-      case "exportDemo": await openReplayPage(state.projects?.[0]); break;
+      case "replayPage": await openReplayPage(state.projects?.[0]); break;
       case "reviewChanges": await vscode.commands.executeCommand("workbench.view.scm"); break;
     }
   });
@@ -705,7 +746,7 @@ async function openProject(project?: any) {
 async function showDashboard() {
   const root = activeRoot;
   const e = await env(false);
-  if (!root || !e || !state.company) { return vscode.window.showInformationMessage("No company yet. Run a request or a demo first."); }
+  if (!root || !e || !state.company) { return vscode.window.showInformationMessage("No company yet. Build from a requirements document first."); }
   const out = path.join(os.tmpdir(), `agentic-dashboard-${Date.now()}.html`);
   const r = await engineCall(e, ["dashboard", "-w", root, "--out", out]);
   if (r.code !== 0) { return vscode.window.showErrorMessage(`Dashboard failed: ${r.stderr.slice(-300)}`); }
@@ -719,7 +760,7 @@ async function openReplayPage(project?: any) {
   const e = await env(false);
   if (!e || !project?.trace) { return vscode.window.showInformationMessage("This project has no trace yet."); }
   const out = path.join(path.dirname(project.trace), "run_replay.html");
-  const r = await engineCall(e, ["demo-page", project.trace, "--out", out]);
+  const r = await engineCall(e, ["replay-page", project.trace, "--out", out]);
   if (r.code !== 0) { return vscode.window.showErrorMessage(`Replay page failed: ${r.stderr.slice(-300)}`); }
   const pick = await vscode.window.showInformationMessage(`Replay page saved: ${out}`, "Open in browser", "Reveal file");
   if (pick === "Open in browser") { await vscode.env.openExternal(vscode.Uri.file(out)); }

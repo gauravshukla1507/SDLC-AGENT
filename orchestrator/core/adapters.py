@@ -8,7 +8,7 @@ to return text and usage, so any agent runtime that can take a prompt can be hir
                plan, this runs on your **subscription** instead of an API key. The agent may read the repository
                (Read/Glob/Grep) but cannot edit files or run commands; the orchestrator writes its output.
   http         Any webhook/bot: POST {agent, system, prompt} -> {text, input_tokens, output_tokens}
-  replay       Recorded responses, for offline demos and tests
+  replay       Recorded responses, for tests
 """
 from __future__ import annotations
 

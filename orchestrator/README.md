@@ -78,22 +78,18 @@ One company can serve many repositories on different stacks. Share one store wit
 cd orchestrator
 pip install -r requirements.txt        # plus the tools of the stacks you use (PMD+Java for Salesforce, node, mvn, …)
 
-# Recorded demos (agent answers replayed, verification runs for real), all in one company
-for s in salesforce python node; do python agentic.py demo --sample $s -w /tmp/agentic-$s --store /tmp/agentic-company.db; done
-python agentic.py dashboard -w /tmp --store /tmp/agentic-company.db --out /tmp/agentic-dashboard.html && open /tmp/agentic-dashboard.html
-
 # What would it do with my repo?
 python agentic.py stacks -w ~/work/any-repo
 
 # Live
 export AGENTIC_RUNTIME=claude-subscription   # your Claude plan via Claude Code (or: export ANTHROPIC_API_KEY=...)
-python agentic.py run --company companies/default-company.json --request-file story.md -w ~/work/any-repo --approver deferred
+python agentic.py run --requirements BRD.docx -w ~/work/any-repo --approver deferred     # .md .txt .docx .pdf; new folder = new app
 python agentic.py approvals -w ~/work/any-repo
 python agentic.py approve all --as "Gaurav" --comment "Pilot approved" -w ~/work/any-repo
 python agentic.py resume -w ~/work/any-repo --approver deferred
 ```
 
-Other commands: `state --json`, `org`, `board`, `budget`, `activity`, `dashboard`, `demo-page <trace>`, `init`, `routines [--run-due]`, `export --out f.json`, `import f.json`, `playbook`.
+Other commands: `state --json`, `org`, `board`, `budget`, `activity`, `dashboard`, `replay-page <trace>`, `doctor [--probe]`, `init`, `routines [--run-due]`, `export --out f.json`, `import f.json`, `playbook`.
 
 ## Where outputs go
 
@@ -114,6 +110,6 @@ overwrite the client's existing CI or docs.
 
 ## Limits
 
-- Only Salesforce, Python and Node have end-to-end demos. The other stacks are covered by detection tests; their
+- Only Salesforce, Python and Node have end-to-end recorded test fixtures. The other stacks are covered by detection tests; their
   commands are the standard ones and should be confirmed on a real repository of each kind.
 - The subscription runtime is tested against a stand-in Claude Code CLI that uses the real JSON format; confirm with `doctor --probe` on your machine. The `http` adapter hasn't been run against a live service yet.

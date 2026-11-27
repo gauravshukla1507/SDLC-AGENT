@@ -1,5 +1,7 @@
 // Smoke test of out/extension.js against a mocked VS Code API: activation, contributed commands,
-// tree views, a full demo with hiring + release approvals decided "in the IDE", auto-resume, dashboard.
+// tree views, building an application from a requirements document into a new folder and a change in the
+// open workspace, with hiring + release approvals decided "in the IDE", auto-resume and the dashboard.
+// A stand-in Claude Code CLI (orchestrator/tests/fakes) answers with recorded responses on the subscription runtime.
 const Module = require("module"); const path = require("path"); const fs = require("fs"); const assert = require("assert");
 const commands = {}, posted = [], infos = [], providers = {}, contexts = {};
 let webviewHandler, dashboardHtml = "";
@@ -30,7 +32,8 @@ const vscode = {
     showWarningMessage: async () => undefined,
     showErrorMessage: async m => { throw new Error("showErrorMessage: " + m); },
     showInputBox: async (o) => (o && /Business request/.test(o.title || "") ? process.env.__REQUEST || "" : ""),
-    showQuickPick: async items => items[0],
+    showQuickPick: async items => items.find(i => i.target === "new") || items[0],
+    showOpenDialog: async o => (o.canSelectFolders ? [{ fsPath: process.env.__NEW_APP_DIR }] : undefined),
     createWebviewPanel: (type) => ({
       webview: { cspSource: "vscode-resource:", set html(h) { if (type === "agenticSdlcDashboard") dashboardHtml = h; },
         postMessage: m => { posted.push(m); return Promise.resolve(true); },
@@ -58,38 +61,49 @@ assert.deepStrictEqual(Object.keys(providers).sort(), pkg.contributes.views.agen
 
 const wait = async (pred, ms = 120000) => { const t = Date.now(); while (!pred()) { if (Date.now() - t > ms) throw new Error("timeout"); await new Promise(r => setTimeout(r, 200)); } };
 (async () => {
-  await commands["agenticSdlc.runDemo"](process.env.SAMPLE || "node");
+  const os = require("os");
+  const orchestrator = path.join(__dirname, "..", "..", "orchestrator");
+  const fixtures = path.join(orchestrator, "tests", "fixtures");
+  const useFixture = (name, dir) => Object.assign(process.env, {
+    CLAUDE_CODE_BIN: path.join(orchestrator, "tests", "fakes", "fake_claude.py"),
+    FAKE_CLAUDE_STATE: path.join(os.tmpdir(), `fake-claude-${name}-${Date.now()}`),
+    FAKE_CLAUDE_RECORDING: path.join(fixtures, name, "recording.json"),
+    ANTHROPIC_API_KEY: "sk-should-be-stripped",
+  });
+
+  // ---- 1) requirements document -> new application in a new, empty folder (greenfield)
+  const appDir = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-new-app-"));
+  process.env.__NEW_APP_DIR = appDir;
+  useFixture("node-late-fees");
+  await commands["agenticSdlc.buildFromDocument"]({ fsPath: path.join(fixtures, "node-late-fees", "story.md") });
   await wait(() => infos.some(m => /built, verified and approved/.test(m)));
   await wait(() => dashboardHtml.includes("Org chart"));
   const evts = posted.filter(m => m.type === "event").map(m => m.ev);
   const gate = evts.find(e => e.kind === "human_gate");
   assert.ok(gate && gate.approved && gate.comment === "Approved in panel", "release approved from the panel");
   assert.ok(infos.some(m => /waiting to be hired/.test(m)), "hiring requested before work");
+  assert.ok(fs.existsSync(path.join(appDir, ".git")), "new application folder is a git repository");
+  assert.ok(fs.existsSync(path.join(appDir, "src", "lateFees.js")), "application code written in the new folder");
   const projects = providers["agenticSdlc.projects"].getChildren();
   assert.strictEqual(projects.length, 1);
-  assert.match(projects[0].description, /^released · /);
+  assert.match(projects[0].description, /^released · node/);
   const tasks = providers["agenticSdlc.projects"].getChildren(projects[0]);
   assert.ok(tasks.length >= 11 && tasks.every(t => t.iconPath.id === "pass-filled"));
   const org = providers["agenticSdlc.company"].getChildren();
   assert.ok(org[0].label === "ZenLabs Delivery" && org.length >= 2);
   const stacks = providers["agenticSdlc.stacks"].getChildren().map(i => i.label);
-  assert.ok(stacks.length >= 3, "stack + checks listed: " + stacks);
+  assert.ok(stacks.includes("node"), "stack detected from what the agents built: " + stacks);
   const approvals = providers["agenticSdlc.approvals"].getChildren();
   assert.ok(approvals.some(a => a.label === "Recent decisions"));
   assert.strictEqual(contexts["agenticSdlc.hasCompany"], true);
-  console.log(`PASS extension smoke (demo): ${Object.keys(commands).length} commands, 4 views, demo released after hire + release approvals; stacks view: ${stacks.slice(1).join(" | ")}`);
+  assert.ok(!commands["agenticSdlc.runDemo"], "no demo command");
+  console.log(`PASS extension smoke (requirements document → new app): ${Object.keys(commands).length} commands, 4 views; stack: ${stacks.slice(1).join(" | ")}`);
 
   // ---- live run on the Claude subscription runtime (default), with a stand-in Claude Code CLI
-  const os = require("os");
+  // ---- 2) "Describe a change" in the open workspace
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-live-"));
-  const orchestrator = path.join(__dirname, "..", "..", "orchestrator");
-  Object.assign(process.env, {
-    CLAUDE_CODE_BIN: path.join(orchestrator, "tests", "fakes", "fake_claude.py"),
-    FAKE_CLAUDE_STATE: path.join(repo, "..", path.basename(repo) + "-fake.json"),
-    FAKE_CLAUDE_RECORDING: path.join(orchestrator, "samples", "python-promo-codes", "recording.json"),
-    ANTHROPIC_API_KEY: "sk-should-be-stripped",
-    __REQUEST: fs.readFileSync(path.join(orchestrator, "samples", "python-promo-codes", "story.md"), "utf8"),
-  });
+  useFixture("python-promo-codes");
+  process.env.__REQUEST = fs.readFileSync(path.join(fixtures, "python-promo-codes", "story.md"), "utf8");
   vscode.workspace.workspaceFolders = [{ uri: { fsPath: repo } }];
   infos.length = 0; posted.length = 0;
   await commands["agenticSdlc.runRequest"]();
@@ -102,6 +116,6 @@ const wait = async (pred, ms = 120000) => { const t = Date.now(); while (!pred()
     `import sqlite3;print(set(r[0] for r in sqlite3.connect('${repo}/.agentic-sdlc/company.db').execute('select adapter from runs')))`]).toString();
   assert.match(dbRuns, /ClaudeCodeAdapter\/subscription/);
   assert.ok(!/ClaudeApiAdapter/.test(dbRuns));
-  console.log(`PASS extension smoke (live, Claude subscription runtime): project released; runs billed as ${dbRuns.trim()}`);
+  console.log(`PASS extension smoke (change in workspace, Claude subscription runtime): released; runs billed as ${dbRuns.trim()}`);
   process.exit(0);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

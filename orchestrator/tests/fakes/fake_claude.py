@@ -32,13 +32,12 @@ if os.environ.get("FAKE_CLAUDE_MODE") == "auth_error":
     sys.exit(0)
 
 agent = next(v for k, v in TITLES.items() if f"You are the {k} " in system)
-state_file = Path(os.environ["FAKE_CLAUDE_STATE"])
-state = json.loads(state_file.read_text()) if state_file.exists() else {}
+# one counter file per agent: agents run in parallel, so a shared file would race
+counter = Path(f"{os.environ['FAKE_CLAUDE_STATE']}.{agent}")
+i = int(counter.read_text()) if counter.exists() else 0
+counter.write_text(str(i + 1))
 recording = json.loads(Path(os.environ["FAKE_CLAUDE_RECORDING"]).read_text())["responses"]
 answers = [r["response"] for r in recording if r["agent"] == agent]
-i = state.get(agent, 0)
-state[agent] = i + 1
-state_file.write_text(json.dumps(state))
 print(json.dumps({"type": "result", "subtype": "success", "is_error": False, "result": answers[i],
                   "total_cost_usd": 0.0123, "usage": {"input_tokens": 1000, "output_tokens": 500,
                                                        "cache_read_input_tokens": 200},

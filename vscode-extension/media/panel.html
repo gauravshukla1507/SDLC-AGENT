@@ -129,7 +129,7 @@ button.no{background:transparent;border-color:var(--red);color:var(--red)}
     <div>
       <div class="kicker">Agentic SDLC · AI delivery company</div>
       <h1 id="title">Waiting for a run…</h1>
-      <p id="subtitle">Start a run with <b>Agentic SDLC: Run on a business request</b> from the Command Palette, or try <b>Agentic SDLC: Run demo</b>.</p>
+      <p id="subtitle">Start with <b>Agentic SDLC: Build application from requirements document…</b>: pick your BRD (.md, .docx, .pdf) and where to build.</p>
     </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <span class="badge"><span class="dot" style="background:var(--orange)"></span>Run <b id="runId"></b></span>
@@ -141,7 +141,7 @@ button.no{background:transparent;border-color:var(--red);color:var(--red)}
     <span class="live hidden" id="liveInd"><span class="dot"></span>Live</span>
     <button class="no hidden" id="cancelBtn">■ Cancel run</button>
     <button class="hidden" id="reviewBtn">Review changes (Git)</button>
-    <button class="hidden" id="exportBtn">Export client demo</button>
+    <button class="hidden" id="exportBtn">Replay page</button>
     <button class="primary" id="playBtn">▶ Replay run</button>
     <button id="stepBtn">Step →</button>
     <button id="allBtn">Show all</button>
@@ -273,7 +273,7 @@ let fileTab = {};
 function renderDetail(){
   const D=document.getElementById('detail'), H=document.getElementById('detailHead'), M=document.getElementById('detailMeta');
   if(pending && pending.length && (selected<0 || selected===EV.length-1 || follow)){ renderApproval(); return; }
-  if(!T.story && !EV.length){ H.textContent='No run yet'; M.textContent=''; D.innerHTML='<div class="empty">Run <b>Agentic SDLC: Run on a business request</b> or <b>Agentic SDLC: Run demo</b> from the Command Palette.</div>'; return; }
+  if(!T.story && !EV.length){ H.textContent='No run yet'; M.textContent=''; D.innerHTML='<div class="empty">Run <b>Agentic SDLC: Build application from requirements document…</b> from the Command Palette or the Projects view.</div>'; return; }
   if(selected<0 || pos===0){
     H.textContent='Business request'; M.textContent='Input to the agent team';
     D.innerHTML=`<pre class="story anim">${esc(T.story.trim())}</pre>
@@ -442,11 +442,11 @@ document.getElementById('speed').onchange=()=>{if(timer){clearInterval(timer);ti
 function setHeader(){
   document.getElementById('runId').textContent=T.run_id||'–';
   document.getElementById('title').textContent = T.title || (T.story ? (T.story.split('\n').find(l=>l.trim()&&!/^request from/i.test(l.trim()))||T.story).trim().slice(0,110) : 'Waiting for a run…');
-  document.getElementById('subtitle').innerHTML = T.mode==='replay' ? 'Recorded demo run: agent answers are replayed, quality gates run for real. No API key needed.'
+  document.getElementById('subtitle').innerHTML = T.mode==='replay' ? 'Recorded run: agent answers are replayed, quality gates run for real.'
     : `Live run${T.model?` · model <b>${esc(T.model)}</b>`:''}${T.branch?` · branch <b>${esc(T.branch)}</b>`:''}. The stack is detected from the repository. Source is written in place for review with git; docs, CI proposals and the trace go to .agentic-sdlc/projects/.`;
   document.getElementById('modeBadge').innerHTML = T.mode==='live'
     ? `<span class="dot" style="background:var(--green)"></span>Live${T.model?` · <b>${esc(T.model)}</b>`:''}`
-    : `<span class="dot" style="background:var(--blue)"></span><b>Recorded demo</b>`;
+    : `<span class="dot" style="background:var(--blue)"></span><b>Recorded run</b>`;
   document.getElementById('foot').textContent='';
 }
 function err(msg){const b=document.getElementById('errBox'); b.textContent=msg; b.classList.toggle('hidden',!msg);}
@@ -466,7 +466,7 @@ window.addEventListener('message', ({data:m})=>{
   else if(m.type==='loadTrace'){stop();T=m.trace;EV=T.events;NODES=T.nodes||NODES;live=false;pending=null;pos=EV.length;selected=EV.length-1;fileTab={};err('');setHeader();render();}
 });
 document.getElementById('cancelBtn').onclick=()=>vscode.postMessage({type:'cancel'});
-document.getElementById('exportBtn').onclick=()=>vscode.postMessage({type:'exportDemo'});
+document.getElementById('exportBtn').onclick=()=>vscode.postMessage({type:'replayPage'});
 document.getElementById('reviewBtn').onclick=()=>vscode.postMessage({type:'reviewChanges'});
 // clicking a past step stops auto-follow until the newest step is selected again
 document.getElementById('logBody').addEventListener('click',()=>{follow=selected===EV.length-1;});
