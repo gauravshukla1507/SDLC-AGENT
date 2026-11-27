@@ -1,5 +1,5 @@
 // Integration test: drives the bundled orchestrator through out/runner.js exactly as the extension does,
-// including asynchronous approvals (hire -> resume -> release -> resume).
+// including asynchronous approvals (hire -> resume -> release -> resume), building from a requirements document.
 const assert = require("assert");
 const fs = require("fs"); const os = require("os"); const path = require("path");
 const { EngineRun, engineCall, engineJson } = require("../out/runner");
@@ -7,6 +7,8 @@ const { EngineRun, engineCall, engineJson } = require("../out/runner");
 const env = { python: process.env.PYTHON || "python3", engineDir: path.join(__dirname, "..", "orchestrator") };
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), "agentic-runner-"));
 const SAMPLE = process.env.SAMPLE || "node";
+const FIXTURES = { node: "node-late-fees", python: "python-promo-codes", salesforce: "salesforce-closed-won" };
+const fx = path.join(__dirname, "..", "..", "orchestrator", "tests", "fixtures", FIXTURES[SAMPLE]);
 
 function stream(args) {
   return new Promise(resolve => {
@@ -18,7 +20,9 @@ function stream(args) {
 
 (async () => {
   const run = ["--approver", "deferred", "--events"];
-  let r = await stream(["demo", "--sample", SAMPLE, "-w", ws, ...run]);
+  // build from a requirements document; recorded agent answers stand in for Claude (test fixture)
+  let r = await stream(["run", "--requirements", path.join(fx, "story.md"), "--replay", path.join(fx, "recording.json"),
+                        "-w", ws, ...run]);
   assert.strictEqual(r.code, 2, "waits for hiring\n" + r.logs.join("\n"));
   assert.strictEqual(r.events[0].kind, "plan");
   assert.ok(r.events[0].nodes.length >= 9, "plan carries pipeline nodes for the panel");
@@ -41,5 +45,5 @@ function stream(args) {
   assert.strictEqual(state.projects[0].status, "released");
   assert.ok(state.projects[0].stacks.length, "stack detected");
   fs.writeFileSync(path.join(__dirname, "last-trace.json"), fs.readFileSync(state.projects[0].trace));
-  console.log(`PASS runner: ${SAMPLE} demo with hire + release approvals, stacks=${state.projects[0].stacks}, ws=${ws}`);
+  console.log(`PASS runner: ${SAMPLE} requirements document → hire + release approvals, stacks=${state.projects[0].stacks}, ws=${ws}`);
 })().catch(e => { console.error("FAIL", e); process.exit(1); });

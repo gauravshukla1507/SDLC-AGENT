@@ -1,8 +1,8 @@
 {
   "name": "agentic-sdlc",
   "displayName": "Agentic SDLC: AI Delivery Company",
-  "description": "Run an AI delivery company inside VS Code, on any technology. An orchestrator with an org chart of Claude-powered agents (requirements, architect, developer, tester, reviewer, security, release) detects your stack, briefs the agents with its conventions, verifies every change with the stack's own build/analysis/test tools, enforces budgets and human approvals, and keeps a full audit trail.",
-  "version": "1.0.0",
+  "description": "Give it a requirements document and an AI delivery company inside VS Code builds the application, on any technology. An orchestrator with an org chart of Claude-powered agents (requirements, architect, developer, tester, reviewer, security, release) detects your stack, briefs the agents with its conventions, verifies every change with the stack's own build/analysis/test tools, enforces budgets and human approvals, and keeps a full audit trail.",
+  "version": "1.2.1",
   "publisher": "zenlabs",
   "license": "SEE LICENSE IN LICENSE.txt",
   "icon": "media/icon.png",
@@ -69,7 +69,7 @@
     "viewsWelcome": [
       {
         "view": "agenticSdlc.projects",
-        "contents": "No projects yet. Describe a change and the agent team delivers it on this repository, whatever the stack.\n[Run a business request](command:agenticSdlc.runRequest)\n[Run a demo (no API key)](command:agenticSdlc.runDemo)\n[Set up company\u2026](command:agenticSdlc.initCompany)"
+        "contents": "Give the agent team a requirements document (BRD, PRD, user stories in .md, .docx or .pdf). It builds the application in this repository or in a new folder, on whatever stack fits.\n[Build application from requirements document](command:agenticSdlc.buildFromDocument)\n[Describe a change](command:agenticSdlc.runRequest)\n[Check setup](command:agenticSdlc.checkSetup)"
       },
       {
         "view": "agenticSdlc.approvals",
@@ -82,27 +82,33 @@
     ],
     "commands": [
       {
-        "command": "agenticSdlc.runRequest",
-        "title": "Run a business request\u2026",
+        "command": "agenticSdlc.buildFromDocument",
+        "title": "Build application from requirements document\u2026",
         "category": "Agentic SDLC",
         "icon": "$(rocket)"
       },
       {
-        "command": "agenticSdlc.runFile",
-        "title": "Run on this file",
+        "command": "agenticSdlc.checkSetup",
+        "title": "Check setup (Claude subscription / API key, stack tools)",
         "category": "Agentic SDLC",
-        "icon": "$(rocket)"
+        "icon": "$(checklist)"
+      },
+      {
+        "command": "agenticSdlc.signInClaude",
+        "title": "Sign in to Claude (use my subscription)",
+        "category": "Agentic SDLC",
+        "icon": "$(account)"
+      },
+      {
+        "command": "agenticSdlc.runRequest",
+        "title": "Describe a change\u2026",
+        "category": "Agentic SDLC",
+        "icon": "$(comment)"
       },
       {
         "command": "agenticSdlc.runSelection",
         "title": "Run on selected text",
         "category": "Agentic SDLC"
-      },
-      {
-        "command": "agenticSdlc.runDemo",
-        "title": "Run a demo (no API key)",
-        "category": "Agentic SDLC",
-        "icon": "$(play-circle)"
       },
       {
         "command": "agenticSdlc.resume",
@@ -200,12 +206,12 @@
     "menus": {
       "view/title": [
         {
-          "command": "agenticSdlc.runRequest",
+          "command": "agenticSdlc.buildFromDocument",
           "when": "view == agenticSdlc.projects",
           "group": "navigation@1"
         },
         {
-          "command": "agenticSdlc.runDemo",
+          "command": "agenticSdlc.runRequest",
           "when": "view == agenticSdlc.projects",
           "group": "navigation@2"
         },
@@ -258,6 +264,11 @@
           "command": "agenticSdlc.refresh",
           "when": "view == agenticSdlc.stacks",
           "group": "navigation@1"
+        },
+        {
+          "command": "agenticSdlc.checkSetup",
+          "when": "view == agenticSdlc.projects",
+          "group": "overflow"
         }
       ],
       "view/item/context": [
@@ -284,8 +295,8 @@
       ],
       "explorer/context": [
         {
-          "command": "agenticSdlc.runFile",
-          "when": "resourceExtname =~ /\\.(md|txt)$/",
+          "command": "agenticSdlc.buildFromDocument",
+          "when": "resourceExtname =~ /\\.(md|markdown|txt|docx|pdf)$/",
           "group": "navigation@90"
         }
       ],
@@ -298,16 +309,12 @@
       ],
       "editor/title": [
         {
-          "command": "agenticSdlc.runFile",
-          "when": "resourceExtname =~ /\\.(md|txt)$/",
+          "command": "agenticSdlc.buildFromDocument",
+          "when": "resourceExtname =~ /\\.(md|markdown|txt)$/",
           "group": "navigation"
         }
       ],
       "commandPalette": [
-        {
-          "command": "agenticSdlc.runFile",
-          "when": "resourceExtname =~ /\\.(md|txt)$/"
-        },
         {
           "command": "agenticSdlc.runSelection",
           "when": "editorHasSelection"
@@ -337,6 +344,24 @@
     "configuration": {
       "title": "Agentic SDLC",
       "properties": {
+        "agenticSdlc.agentRuntime": {
+          "type": "string",
+          "enum": [
+            "claudeSubscription",
+            "apiKey"
+          ],
+          "default": "claudeSubscription",
+          "enumDescriptions": [
+            "Run agents on your Claude Pro/Max/Team/Enterprise plan through Claude Code (signed in with /login). No API key needed; your plan's usage limits apply.",
+            "Run agents through the Anthropic API with your API key (billed per token)."
+          ],
+          "description": "How the agents reach Claude."
+        },
+        "agenticSdlc.claudeCodePath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to the Claude Code CLI ('claude') if it is not on PATH."
+        },
         "agenticSdlc.approverName": {
           "type": "string",
           "default": "",

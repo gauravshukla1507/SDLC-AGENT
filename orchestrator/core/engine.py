@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 from . import agents_contract as contract
-from .adapters import build_adapter
+from .adapters import AgentUnavailable, build_adapter
 from .budget import BudgetExceeded, BudgetGuard, estimate_tokens, run_cost
 from .company import goal_ancestry, load_skill
 from .governance import Governance
@@ -32,7 +32,8 @@ TERMINAL = {"done", "cancelled", "failed"}
 
 class Engine:
     def __init__(self, store: Store, company: dict, playbook: Playbook, workspace: Path, *, approver=None,
-                 replay=None, max_fix_iterations: int = 3, log=print, on_event=None, gate_options: dict | None = None):
+                 replay=None, max_fix_iterations: int = 3, log=print, on_event=None, gate_options: dict | None = None,
+                 runtime: str = "api"):
         self.store, self.company, self.playbook = store, company, playbook
         self.ws = Path(workspace)
         self.ws.mkdir(parents=True, exist_ok=True)
@@ -44,11 +45,15 @@ class Engine:
         self.governance = Governance(store, company, self._log, approver)
         self.budget = BudgetGuard(store, company, self._log)
         self.pricing = (company.get("spec") or {}).get("pricing")
+        self.runtime = runtime
         self.concurrency = (company.get("spec") or {}).get("concurrency", 4)
+        if runtime == "claude-subscription":   # plans have usage limits: keep parallelism modest
+            self.concurrency = min(self.concurrency, (company.get("spec") or {}).get("subscription_concurrency", 2))
+        self.paused_reason: str | None = None
         self._adapters: dict[str, object] = {}
         self.goal: dict | None = None
         self.artifacts: Path | None = None
-        self.events: list[dict] = []     # demo/IDE-compatible trace events
+        self.events: list[dict] = []     # trace events (run panel, replay page)
         self.goal_stacks: list[str] = []
 
     # ------------------------------------------------------------ logging & events
@@ -110,6 +115,11 @@ class Engine:
         previous = self.artifacts / "trace.json"
         if previous.exists():  # keep one continuous trace across pauses and resumes
             self.events = json.loads(previous.read_text(encoding="utf-8")).get("events", [])
+        # A task left "in_progress" belongs to a process that ended (closed IDE, crash, cancel). Only one
+        # engine drives a project at a time, so on resume such tasks are safely handed back to the queue.
+        for t in self.store.all("SELECT * FROM tasks WHERE goal_id=? AND status='in_progress'", goal_id):
+            self.store.release(t["id"], "todo")
+            self._log("orchestrator", "task.recovered", f"task:{t['key']}", previous_owner=t["checked_out_by"])
 
     # ------------------------------------------------------------ scheduler
     def tasks(self) -> list[dict]:
@@ -131,6 +141,9 @@ class Engine:
                 continue
             with ThreadPoolExecutor(max_workers=self.concurrency) as pool:
                 list(pool.map(self.heartbeat, ready))
+            if self.paused_reason:
+                self.out(f"  || paused: {self.paused_reason}")
+                return self._finish("paused")
 
     def _agent_ready(self, task) -> bool:
         a = self._agent(task["assignee"])
@@ -179,6 +192,10 @@ class Engine:
                 self._run_approval_task(task)
         except BudgetExceeded as exc:
             self._on_budget(task, exc)
+        except AgentUnavailable as exc:
+            self.store.release(task["id"], "todo")
+            self.paused_reason = str(exc)
+            self._log("orchestrator", "agent.unavailable", f"task:{task['key']}", reason=str(exc))
         except Exception as exc:  # noqa: BLE001
             self.store.release(task["id"], "failed", {"error": f"{type(exc).__name__}: {exc}"})
             self._log(actor, "task.failed", f"task:{task['key']}", error=str(exc))
@@ -195,7 +212,7 @@ class Engine:
                 raw = json.loads(raw)
             except (json.JSONDecodeError, TypeError):
                 pass
-            self._adapters[agent["key"]] = build_adapter(raw, self.replay)
+            self._adapters[agent["key"]] = build_adapter(raw, self.replay, self.runtime)
         return self._adapters[agent["key"]]
 
     def _system_prompt(self, agent: dict) -> str:
@@ -258,9 +275,11 @@ class Engine:
         estimated = res.input_tokens is None
         tin = res.input_tokens if not estimated else estimate_tokens(system + prompt)
         tout = res.output_tokens if not estimated else estimate_tokens(res.text)
-        model = getattr(adapter, "model", None) if getattr(adapter, "model", None) != "recorded" else \
+        model = res.model if res.model and res.model not in ("recorded",) else \
+            (getattr(adapter, "model", None) if getattr(adapter, "model", None) != "recorded" else None) or \
             _model_of(agent) or "claude-sonnet"
-        cost = run_cost(model, tin, tout, self.pricing)
+        # Claude Code reports its own cost; on a subscription it is the API-equivalent value used for budgets
+        cost = round(res.cost_usd, 6) if res.cost_usd is not None else run_cost(model, tin, tout, self.pricing)
 
         paths = {}
         for rel, content in out.files.items():
@@ -274,7 +293,8 @@ class Engine:
                                                 "task_id": task["id"], "path": rel, "physical_path": paths[rel],
                                                 "content": content, "created": now()})
         self.store.insert("runs", {"id": new_id("run"), "company_id": self.company["id"], "task_id": task["id"],
-                                   "agent_key": agent["key"], "adapter": type(adapter).__name__, "model": model,
+                                   "agent_key": agent["key"], "model": model,
+                                   "adapter": f"{type(adapter).__name__}/{getattr(res, 'billing', 'api')}",
                                    "started": now(), "finished": now(), "status": "succeeded",
                                    "input_tokens": tin, "output_tokens": tout, "tokens_estimated": int(estimated),
                                    "cost_usd": cost, "summary": out.summary[:500]})
@@ -449,7 +469,7 @@ class Engine:
             return str(p)
 
     def nodes(self) -> list[dict]:
-        """Pipeline description for UIs (run panel, demo page)."""
+        """Pipeline description for UIs (run panel, replay page)."""
         steps = self.playbook.steps()
         siblings = {s.key for s in steps if sum(1 for t in steps if t.deps == s.deps) > 1}
         agent = self._agent

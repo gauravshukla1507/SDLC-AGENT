@@ -21,17 +21,17 @@
 | `core/engine.py` | Scheduler and heartbeats: ready tasks wake their assignee and run in parallel waves. Agent runs, gates, fix routing, approvals, budget enforcement, traces. |
 | `core/governance.py` | Approvals (hire, release, budget_override, gateway, escalation), approver strategies (deferred, CLI, IDE, auto), tool-gateway policies. |
 | `core/budget.py` | Cost per run (token pricing), roll-up to agent, project and company; 80% warning and 100% hard stop. |
-| `core/adapters.py` | Bring-your-own-agent: `claude_api`, `claude_code` (headless CLI), `http` (any bot), `replay`. |
+| `core/adapters.py` | Bring-your-own-agent: `claude_api`, `claude_code` (headless CLI), `http` (any bot), `replay`. Runtime `claude-subscription` routes Claude seats through Claude Code on the user's plan; an unavailable runtime pauses the project (`AgentUnavailable`). |
 | `core/playbook.py`, `delivery.py` | The playbook abstraction and the universal delivery playbook (roles, steps, gates, routing, file layout). |
 | `stacks/` | Stack detection, verification plans (blocking vs advisory, install → build → static → test → lint), environment checks, project context, convention skills. Platform-specific helpers (e.g. Apex PMD and org validation) live here as plug-ins. |
-| `core/state.py`, `core/dashboard.py`, `core/demo_page.html` | Read model for UIs, company dashboard, step-through replay page. |
-| `agentic.py` | CLI: delivery (`run`, `demo`, `resume`), people (`approvals`, `approve`), insight (`state`, `stacks`, `org`, `board`, `budget`, `activity`, `dashboard`, `demo-page`), admin (`init`, `routines`, `export`, `import`). `--json` and `--events` for integrations. |
-| `vscode-extension/` | IDE client over the CLI: views, run panel, approvals, diagnostics, dashboard, demos. |
+| `core/state.py`, `core/dashboard.py`, `core/replay_page.html`, `core/documents.py` | Read model for UIs, company dashboard, step-through replay page, requirements-document intake (Markdown, text, Word, PDF). |
+| `agentic.py` | CLI: delivery (`run --requirements <doc>`, `resume`), people (`approvals`, `approve`), insight (`state`, `stacks`, `org`, `board`, `budget`, `activity`, `dashboard`, `replay-page`, `doctor`), admin (`init`, `routines`, `export`, `import`). `--json` and `--events` for integrations. |
+| `vscode-extension/` | IDE client over the CLI: build from a requirements document (existing repo or new folder), views, run panel, approvals, diagnostics, dashboard. |
 
 ## A project's life
 
 ```
-request ─▶ project goal (under a company goal, under the mission)
+requirements document (.md/.docx/.pdf) ─▶ text with headings and tables ─▶ project goal (under a company goal, under the mission)
         ─▶ tasks from the playbook, each assigned to a seat
         ─▶ hiring approvals for seats not yet hired               (run pauses; humans decide; resume)
         ─▶ heartbeat waves: Requirements → Architect → Developer ∥ Tester

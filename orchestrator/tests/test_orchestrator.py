@@ -24,7 +24,7 @@ from core.store import Store  # noqa: E402
 from stacks import salesforce_tools as sf_tools  # noqa: E402
 
 SPEC = ROOT / "companies" / "default-company.json"
-SAMPLES = ROOT / "samples"
+SAMPLES = ROOT / "tests" / "fixtures"     # recorded agent answers used as test fixtures
 SF, PY, NODE = "salesforce-closed-won", "python-promo-codes", "node-late-fees"
 needs_pmd = pytest.mark.skipif(sf_tools._pmd_binary() is None, reason="PMD not installed")
 needs_npm = pytest.mark.skipif(not shutil.which("npm"), reason="npm not installed")
@@ -305,9 +305,11 @@ def _cli(*args):
     return p.returncode, p.stdout
 
 
-def test_cli_deferred_flow_with_json_for_ide(tmp_path):
-    ws = str(tmp_path / "ws")
-    code, outp = _cli("demo", "--sample", "python", "-w", ws, "--approver", "deferred", "--events")
+def test_cli_build_from_requirements_document_with_deferred_approvals(tmp_path):
+    ws = str(tmp_path / "new-app")                                       # a new, empty folder: greenfield
+    fx = SAMPLES / PY
+    code, outp = _cli("run", "--requirements", str(fx / "story.md"), "-w", ws, "--approver", "deferred",
+                      "--events", "--replay", str(fx / "recording.json"))
     assert code == 2 and "@@EVENT" in outp                              # waiting for hiring approvals
     code, outp = _cli("approvals", "-w", ws, "--json")
     assert {a["type"] for a in json.loads(outp)} == {"hire"}
@@ -316,12 +318,157 @@ def test_cli_deferred_flow_with_json_for_ide(tmp_path):
     [rel] = json.loads(_cli("approvals", "-w", ws, "--json")[1])
     assert rel["type"] == "release"
     _cli("approve", rel["id"], "--as", "Gaurav", "--comment", "ok", "-w", ws)
-    assert _cli("resume", "-w", ws, "--approver", "deferred")[0] == 0   # demo replay remembered across processes
+    assert _cli("resume", "-w", ws, "--approver", "deferred")[0] == 0
     state = json.loads(_cli("state", "-w", ws, "--json")[1])
     assert state["projects"][0]["status"] == "released" and "python" in state["projects"][0]["stacks"]
     assert len(state["agents"]) == 8 and state["spend"]["total_usd"] > 0
-    stk = json.loads(_cli("stacks", "-w", ws, "--json")[1])
-    assert stk["stacks"][0]["name"] == "python"
+    assert json.loads(_cli("stacks", "-w", ws, "--json")[1])["stacks"][0]["name"] == "python"
     trace = state["projects"][0]["trace"]
-    assert _cli("demo-page", trace, "--out", str(tmp_path / "replay.html"))[0] == 0
+    assert _cli("replay-page", trace, "--out", str(tmp_path / "replay.html"))[0] == 0
     assert "Promo codes" in (tmp_path / "replay.html").read_text()
+
+
+def test_cli_has_no_demo_command():
+    code, outp = _cli("demo", "--help")
+    assert code != 0
+
+
+# ------------------------------------------------------------------ requirement documents
+def _docx(path: Path, paragraphs: list, table: list):
+    import zipfile
+    w = 'xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"'
+    def para(text, style=None, numbered=False):
+        ppr = ""
+        if style or numbered:
+            ppr = "<w:pPr>" + (f'<w:pStyle w:val="{style}"/>' if style else "") + \
+                  ("<w:numPr><w:ilvl w:val=\"0\"/></w:numPr>" if numbered else "") + "</w:pPr>"
+        return f"<w:p>{ppr}<w:r><w:t>{text}</w:t></w:r></w:p>"
+    body = "".join(para(*p) for p in paragraphs)
+    rows = "".join("<w:tr>" + "".join(f"<w:tc><w:p><w:r><w:t>{c}</w:t></w:r></w:p></w:tc>" for c in r) + "</w:tr>"
+                   for r in table)
+    xml = f'<?xml version="1.0" encoding="UTF-8"?><w:document {w}><w:body>{body}<w:tbl>{rows}</w:tbl></w:body></w:document>'
+    with zipfile.ZipFile(path, "w") as z:
+        z.writestr("[Content_Types].xml", "<Types/>")
+        z.writestr("word/document.xml", xml)
+
+
+def test_read_requirements_docx_keeps_headings_lists_and_tables(tmp_path):
+    from core.documents import read_requirements, title_of
+    doc = tmp_path / "BRD.docx"
+    _docx(doc, [("Leave Management Service", "Title"), ("Business rules", "Heading1"),
+                ("Employees accrue 1.5 days of leave per month.",), ("Carry-forward is capped at 30 days", None, True)],
+          [["ID", "Criterion"], ["AC-1", "Accrual is 1.5 days per full month"], ["AC-2", "Cap is 30 days"]])
+    text = read_requirements(doc)
+    assert "# Leave Management Service" in text and "## Business rules" in text
+    assert "- Carry-forward is capped at 30 days" in text
+    assert "| AC-1 | Accrual is 1.5 days per full month |" in text
+    assert title_of(text) == "Leave Management Service"
+
+
+def test_read_requirements_markdown_and_errors(tmp_path):
+    from core.documents import DocumentError, read_requirements, title_of
+    md = tmp_path / "brd.md"
+    md.write_text("# Business Requirements Document: Expense Claim Policy Engine\n\n" + "Rule text. " * 10)
+    assert title_of(read_requirements(md)) == "Expense Claim Policy Engine"
+    with pytest.raises(DocumentError):
+        read_requirements(tmp_path / "missing.docx")
+    (tmp_path / "x.pptx").write_text("x")
+    with pytest.raises(DocumentError):
+        read_requirements(tmp_path / "x.pptx")
+    (tmp_path / "empty.txt").write_text("hi")
+    with pytest.raises(DocumentError, match="almost no text"):
+        read_requirements(tmp_path / "empty.txt")
+
+
+def test_bundled_brd_reads_cleanly():
+    from core.documents import read_requirements, title_of
+    brd = ROOT.parent / "examples" / "BRD-expense-claim-policy-engine.md"
+    if brd.exists():
+        assert title_of(read_requirements(brd)) == "Expense Claim Policy Engine"
+
+
+# ------------------------------------------------------------------ Claude subscription runtime (Claude Code)
+def _fake_claude(monkeypatch, tmp_path, mode=None, recording=PY):
+    monkeypatch.setenv("CLAUDE_CODE_BIN", str(ROOT / "tests" / "fakes" / "fake_claude.py"))
+    monkeypatch.setenv("FAKE_CLAUDE_STATE", str(tmp_path / "fake_state.json"))
+    monkeypatch.setenv("FAKE_CLAUDE_RECORDING", str(SAMPLES / recording / "recording.json"))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-must-not-be-used")      # must be stripped for subscription runs
+    if mode:
+        monkeypatch.setenv("FAKE_CLAUDE_MODE", mode)
+    else:
+        monkeypatch.delenv("FAKE_CLAUDE_MODE", raising=False)
+
+
+def _live_engine(tmp_path, approver, runtime="claude-subscription", store=None):
+    store = store or Store(tmp_path / "company.db")
+    company = create_company(store, load_spec(SPEC))
+    engine = Engine(store, company, get_playbook(), tmp_path / "ws", approver=approver, log=quiet, runtime=runtime)
+    hire_agents(store, company, engine.governance)
+    return store, company, engine
+
+
+def test_subscription_runtime_end_to_end(tmp_path, monkeypatch):
+    _fake_claude(monkeypatch, tmp_path)
+    store, company, engine = _live_engine(tmp_path, gov.auto_approver("Lead"))
+    engine.start_project((SAMPLES / PY / "story.md").read_text(), title="Promo codes (subscription)")
+    assert engine.run() == "released"
+    runs = store.all("SELECT * FROM runs")
+    assert runs and all(r["adapter"] == "ClaudeCodeAdapter/subscription" for r in runs)
+    assert all(r["cost_usd"] == 0.0123 and r["input_tokens"] == 1200 and not r["tokens_estimated"] for r in runs)
+    assert engine.concurrency <= 2
+    from core.state import company_state
+    assert company_state(store, company)["spend"]["billing"] == "subscription"
+
+
+def test_subscription_not_signed_in_pauses_then_resumes(tmp_path, monkeypatch):
+    _fake_claude(monkeypatch, tmp_path, mode="auth_error")
+    store, company, engine = _live_engine(tmp_path, gov.auto_approver("Lead"))
+    engine.start_project((SAMPLES / PY / "story.md").read_text(), title="Promo codes")
+    assert engine.run() == "paused"
+    assert "not signed in" in engine.paused_reason
+    from core.state import company_state
+    st = company_state(store, company)["projects"][0]
+    assert st["status"] == "paused" and "not signed in" in st["paused_reason"]
+    assert all(t["status"] in ("todo",) for t in engine.tasks())      # nothing lost, nothing half-done
+    _fake_claude(monkeypatch, tmp_path)                                # user signs in
+    e2 = Engine(store, company, get_playbook(), tmp_path / "ws", approver=gov.auto_approver("Lead"), log=quiet,
+                runtime="claude-subscription")
+    e2.attach(engine.goal["id"])
+    assert e2.run() == "released"
+
+
+def test_api_runtime_without_key_pauses_with_hint(tmp_path, monkeypatch):
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    store, company, engine = _live_engine(tmp_path, gov.auto_approver("Lead"), runtime="api")
+    engine.start_project("Add a hello endpoint", title="Hello")
+    assert engine.run() == "paused"
+    assert "claude-subscription" in engine.paused_reason
+
+
+# ------------------------------------------------------------------ robustness found in a real run
+def test_request_pointing_at_a_document_uses_its_content(tmp_path):
+    ws = tmp_path / "repo"
+    (ws / "docs").mkdir(parents=True)
+    brd = ROOT.parent / "examples" / "BRD-expense-claim-policy-engine.md"
+    (ws / "docs" / "brd.md").write_text(brd.read_text())
+    sys.path.insert(0, str(ROOT))
+    import agentic
+    text = agentic.expand_file_reference("use brd.md", ws)
+    assert "BR-02 Receipt" in text and "AC-12" in text
+    with pytest.raises(Exception, match="no such file"):
+        agentic.expand_file_reference("use missing.docx", ws)
+    assert agentic.expand_file_reference("Add a health endpoint", ws) == "Add a health endpoint"
+
+
+def test_resume_recovers_tasks_orphaned_by_a_dead_process(tmp_path):
+    store, company, engine = setup(tmp_path, PY, gov.auto_approver("Lead"))
+    design = next(t for t in engine.tasks() if t["key"] == "design")
+    req = next(t for t in engine.tasks() if t["key"] == "requirements")
+    store.release(req["id"], "done", {"summary": "s"})
+    store.update("tasks", "id", design["id"], status="in_progress", checked_out_by="architect")   # process died
+    e2 = Engine(store, company, get_playbook(), tmp_path / "ws", approver=gov.auto_approver("Lead"),
+                replay=ReplayLLM(SAMPLES / PY / "recording.json"), log=quiet)
+    e2.replay.queues["requirements"].pop(0)                                                       # already done
+    e2.attach(engine.goal["id"])
+    assert any(r["action"] == "task.recovered" for r in store.all("SELECT action FROM activity"))
+    assert e2.run() == "released"

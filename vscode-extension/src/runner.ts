@@ -20,6 +20,8 @@ export interface EngineEnv {
   pmdPath?: string;
   store?: string;
   targetOrg?: string;
+  /** "claude-subscription" (Claude plan via Claude Code) or "api" (per-token API key) */
+  runtime?: string;
 }
 
 export interface RunCallbacks {
@@ -30,7 +32,12 @@ export interface RunCallbacks {
 
 export function engineEnvVars(e: EngineEnv): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "1" };
-  if (e.apiKey) { env.ANTHROPIC_API_KEY = e.apiKey; }
+  if (e.runtime) { env.AGENTIC_RUNTIME = e.runtime; }
+  if (e.runtime === "claude-subscription") {
+    delete env.ANTHROPIC_API_KEY;            // otherwise Claude Code would bill the API key instead of the plan
+  } else if (e.apiKey) {
+    env.ANTHROPIC_API_KEY = e.apiKey;
+  }
   if (e.pmdPath) { env.PMD_BIN = e.pmdPath; }
   if (e.store) { env.AGENTIC_STORE = e.store; }
   if (e.targetOrg) { env.SF_TARGET_ORG = e.targetOrg; }
